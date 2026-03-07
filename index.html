@@ -86,7 +86,6 @@
               <option value="A$">A$ AUD</option>
               <option value="C$">C$ CAD</option>
             </select>
-            <!-- ─── NEW INVOICE BUTTON ─── -->
             <button class="btn-secondary" onclick="App.newInvoice()">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
                 <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -136,7 +135,6 @@
 
         <!-- Invoice Document -->
         <div class="invoice-document" id="invoiceDocument">
-
           <div class="invoice-top">
             <div class="invoice-brand">
               <img id="invoiceLogo" class="invoice-logo" src="" alt="" style="display:none"/>
@@ -222,7 +220,6 @@
             <div class="notes-label">Notes</div>
             <textarea id="invoiceNotes" class="notes-input" placeholder="Payment terms, thank you note, bank details…" rows="2"></textarea>
           </div>
-
         </div><!-- /invoice-document -->
       </section>
 
@@ -350,10 +347,81 @@
 
     </main>
 
-    <!-- ─── FOOTER ─── -->
     <footer class="app-footer no-print">
       © 2026 — Built with ❤️ by <a href="https://geanpaulo.com" target="_blank" rel="noopener noreferrer">Gean Paulo</a>
     </footer>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       AI FOLLOW-UP DRAFTER MODAL
+  ═══════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="emailModal" onclick="App.closeEmailModal(event)">
+    <div class="modal-card">
+
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <div class="modal-ai-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="13" height="13">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+            AI Follow-up Drafter
+          </div>
+          <span class="modal-invoice-ref" id="modalInvoiceRef"></span>
+        </div>
+        <button class="modal-close" onclick="App.closeEmailModal()" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Loading state -->
+      <div class="modal-loading" id="modalLoading">
+        <span class="spinner"></span>
+        <span>Drafting your follow-up email…</span>
+      </div>
+
+      <!-- Result state -->
+      <div class="modal-result" id="modalResult" style="display:none">
+        <div class="modal-tone-badge" id="modalToneBadge"></div>
+
+        <div class="modal-field-group">
+          <label class="modal-field-label">Subject</label>
+          <input type="text" id="modalSubject" class="modal-subject-input" readonly />
+        </div>
+
+        <div class="modal-field-group">
+          <label class="modal-field-label">Email Body</label>
+          <textarea id="modalBody" class="modal-body-textarea" rows="12" readonly></textarea>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn-secondary" onclick="App.copyEmailDraft()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="14" height="14">
+              <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            Copy Draft
+          </button>
+          <button class="btn-primary" id="modalMailtoBtn" onclick="App.openInMailClient()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="14" height="14">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+              <polyline points="22,6 12,13 2,6"/>
+            </svg>
+            Open in Mail
+          </button>
+        </div>
+      </div>
+
+      <!-- Error state -->
+      <div class="modal-error" id="modalError" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <p id="modalErrorMsg">Something went wrong. Please try again.</p>
+        <button class="btn-secondary" onclick="App.closeEmailModal()">Close</button>
+      </div>
+
+    </div>
   </div>
 
   <script src="app.js"></script>
