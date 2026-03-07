@@ -25,6 +25,9 @@ const App = (() => {
     logoUrl: ''
   };
 
+  // Holds the current email draft for the mailto builder
+  let _currentDraft = { subject: '', body: '', clientEmail: '' };
+
   /* ══════════ INIT ══════════ */
   async function init() {
     const today = new Date();
@@ -82,7 +85,7 @@ const App = (() => {
   /* ══════════ ROW MANAGEMENT ══════════ */
   function addRow(desc = '', qty = 1, price = '') {
     const tbody = document.getElementById('invoiceBody');
-    const tr = document.createElement('tr');
+    const tr    = document.createElement('tr');
     tr.innerHTML = `
       <td><input type="text" placeholder="Item description" value="${escHtml(desc)}" oninput="App.updateTotals()" /></td>
       <td class="td-qty"><input type="number" value="${qty}" min="0" step="any" oninput="App.updateTotals()" /></td>
@@ -127,11 +130,8 @@ const App = (() => {
     updateTotals();
   }
 
-  /* ══════════ NEW INVOICE ══════════
-     Resets the form for a brand-new invoice and advances
-     the invoice number to the next one in sequence.      */
+  /* ══════════ NEW INVOICE ══════════ */
   async function newInvoice() {
-    // Reset all form fields
     document.getElementById('invoiceBody').innerHTML   = '';
     document.getElementById('clientName').value        = '';
     document.getElementById('clientEmail').value       = '';
@@ -140,17 +140,11 @@ const App = (() => {
     document.getElementById('magicInput').value        = '';
     document.getElementById('magicStatus').textContent = '';
     document.getElementById('taxRateInput').value      = DEFAULT_TAX_RATE;
-
-    // Reset dates
     const today = new Date();
     document.getElementById('invoiceDate').value = fmtDate(today);
     const due = new Date(today); due.setDate(due.getDate() + 30);
     document.getElementById('invoiceDue').value = fmtDate(due);
-
-    // Advance to next invoice number
     await resolveInvoiceNumber();
-
-    // Start with one blank row
     addRow();
     showToast('Ready for a new invoice.');
   }
@@ -206,7 +200,11 @@ const App = (() => {
   function setMagicStatus(type, msg) {
     const el = document.getElementById('magicStatus');
     el.innerHTML = type === 'loading' ? `<span class="spinner"></span> ${msg}` : msg;
-    el.style.color = type === 'ok' ? 'var(--success)' : type === 'err' ? 'var(--danger)' : 'var(--text-secondary)';
+    el.style.color = type === 'ok'
+      ? 'var(--success)'
+      : type === 'err'
+      ? 'var(--danger)'
+      : 'var(--text-secondary)';
   }
 
   /* ══════════ SAVE INVOICE ══════════ */
@@ -215,7 +213,11 @@ const App = (() => {
     const items = [];
     rows.forEach(row => {
       const inputs = row.querySelectorAll('input');
-      items.push({ desc: inputs[0].value, qty: parseFloat(inputs[1].value) || 0, price: parseFloat(inputs[2].value) || 0 });
+      items.push({
+        desc:  inputs[0].value,
+        qty:   parseFloat(inputs[1].value) || 0,
+        price: parseFloat(inputs[2].value) || 0
+      });
     });
     const taxPct   = parseFloat(document.getElementById('taxRateInput').value) || 0;
     const subtotal = items.reduce((s, i) => s + i.qty * i.price, 0);
@@ -262,6 +264,35 @@ const App = (() => {
     showToast('Invoice cleared.');
   }
 
+  /* ══════════ OVERDUE LOGIC ══════════ */
+  /**
+   * Returns days overdue.
+   * Negative = not yet due, 0 = due today, positive = overdue.
+   */
+  function daysOverdue(dueDateStr) {
+    if (!dueDateStr) return null;
+    const due   = new Date(dueDateStr);
+    const today = new Date();
+    due.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    return Math.floor((today - due) / (1000 * 60 * 60 * 24));
+  }
+
+  /**
+   * Returns tone metadata based on days overdue.
+   * Thresholds:
+   *   not due yet  → Gentle Heads-up   (upcoming)
+   *   0–7 days     → Friendly Reminder (friendly)
+   *   8–13 days    → Friendly Reminder (gentle)
+   *   14+ days     → Firm Follow-up    (firm)
+   */
+  function getTone(days) {
+    if (days === null || days < 0) return { key: 'upcoming', label: 'Gentle Heads-up',   emoji: '📅' };
+    if (days <= 7)                 return { key: 'friendly', label: 'Friendly Reminder',  emoji: '🔔' };
+    if (days <= 13)                return { key: 'gentle',   label: 'Friendly Reminder',  emoji: '🔔' };
+    return                                { key: 'firm',     label: 'Firm Follow-up',     emoji: '⚠️' };
+  }
+
   /* ══════════ LOAD HISTORY ══════════ */
   async function loadHistory() {
     const container = document.getElementById('historyList');
@@ -277,22 +308,199 @@ const App = (() => {
           </svg><p>No saved invoices yet.</p></div>`;
         return;
       }
-      container.innerHTML = invoices.map((inv, idx) => `
-        <div class="history-card">
-          <div class="history-card-info">
-            <div class="hc-number">${escHtml(inv.id)}</div>
-            <div class="hc-client">${escHtml(inv.clientName || 'Unknown Client')}</div>
-            <div class="hc-date">Saved ${new Date(inv.savedAt).toLocaleDateString()}</div>
-          </div>
-          <div class="history-card-amount">${escHtml(inv.currency)}${fmt(inv.total)}</div>
-          <div class="history-card-actions">
-            <button class="btn-load" onclick="App.loadInvoiceToEditor(${idx})">Load</button>
-            <button class="btn-del-invoice" onclick="App.deleteInvoice(${idx})">Delete</button>
-          </div>
-        </div>`).join('');
+      container.innerHTML = invoices.map((inv, idx) => {
+        const days  = daysOverdue(inv.due);
+        const tone  = getTone(days);
+        const overdueLabel =
+          days === null ? 'No due date' :
+          days < 0      ? `Due in ${Math.abs(days)} day${Math.abs(days) !== 1 ? 's' : ''}` :
+          days === 0    ? 'Due today' :
+                          `${days} day${days !== 1 ? 's' : ''} overdue`;
+        return `
+          <div class="history-card">
+            <div class="history-card-info">
+              <div class="hc-number">${escHtml(inv.id)}</div>
+              <div class="hc-client">${escHtml(inv.clientName || 'Unknown Client')}</div>
+              <div class="hc-date">Saved ${new Date(inv.savedAt).toLocaleDateString()}</div>
+              <div class="hc-overdue-badge ${tone.key}">${tone.emoji} ${overdueLabel}</div>
+            </div>
+            <div class="history-card-amount">${escHtml(inv.currency)}${fmt(inv.total)}</div>
+            <div class="history-card-actions">
+              <button class="btn-draft-email" onclick="App.openEmailModal(${idx})" title="Draft follow-up email with AI">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="13" height="13">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                  <polyline points="22,6 12,13 2,6"/>
+                </svg>
+                Draft Email
+              </button>
+              <button class="btn-load" onclick="App.loadInvoiceToEditor(${idx})">Load</button>
+              <button class="btn-del-invoice" onclick="App.deleteInvoice(${idx})">Delete</button>
+            </div>
+          </div>`;
+      }).join('');
     } catch (e) {
       container.innerHTML = '<div class="empty-state"><p>Failed to load invoices.</p></div>';
     }
+  }
+
+  /* ══════════ AI FOLLOW-UP EMAIL MODAL ══════════ */
+
+  /**
+   * Opens the modal, shows loading state, calls Qwen to draft the email,
+   * then populates the result or shows the error state.
+   */
+  async function openEmailModal(idx) {
+    // Fetch the invoice from KV
+    let invoices = [];
+    try {
+      invoices = await puter.kv.get(KV_INVOICES) || [];
+      if (typeof invoices === 'string') invoices = JSON.parse(invoices);
+    } catch (e) {
+      showToast('Could not load invoice data.');
+      return;
+    }
+    const inv = invoices[idx];
+    if (!inv) { showToast('Invoice not found.'); return; }
+
+    // Show modal in loading state
+    const modal = document.getElementById('emailModal');
+    modal.classList.add('visible');
+    document.body.style.overflow = 'hidden';
+
+    document.getElementById('modalInvoiceRef').textContent = inv.id;
+    document.getElementById('modalLoading').style.display  = 'flex';
+    document.getElementById('modalResult').style.display   = 'none';
+    document.getElementById('modalError').style.display    = 'none';
+
+    // Determine tone
+    const days = daysOverdue(inv.due);
+    const tone = getTone(days);
+
+    // Build context for the AI
+    const dueDateFormatted = inv.due
+      ? new Date(inv.due).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      : 'No due date specified';
+    const amountFormatted  = `${inv.currency}${fmt(inv.total)}`;
+    const overdueContext   =
+      days === null ? 'The invoice has no due date.' :
+      days < 0      ? `The invoice is not yet due — it is due in ${Math.abs(days)} day(s) on ${dueDateFormatted}.` :
+      days === 0    ? `The invoice is due TODAY (${dueDateFormatted}).` :
+                      `The invoice is ${days} day(s) overdue. It was due on ${dueDateFormatted}.`;
+
+    const systemPrompt =
+      'You are a professional business assistant. Based on the provided invoice data, ' +
+      'write a polite but clear follow-up email.\n' +
+      '- If it\'s not due yet, write a "Gentle Heads-up".\n' +
+      '- If it\'s 1–7 days late, write a "Friendly Reminder".\n' +
+      '- If it\'s 8–13 days late, write a "Friendly Reminder" with slightly more urgency.\n' +
+      '- If it\'s 14+ days late, write a "Firm Follow-up".\n' +
+      'Include the invoice number and a "Pay Now" link placeholder: [PAY NOW LINK].\n' +
+      'Output ONLY the email in this exact format (no extra text, no markdown):\n' +
+      'SUBJECT: <subject line here>\n\n<email body here>';
+
+    const userMessage =
+      `Client Name: ${inv.clientName || 'Valued Client'}\n` +
+      `Client Email: ${inv.clientEmail || 'N/A'}\n` +
+      `Invoice Number: ${inv.id}\n` +
+      `Invoice Amount: ${amountFormatted}\n` +
+      `Due Date: ${dueDateFormatted}\n` +
+      `Status: ${overdueContext}\n` +
+      `Tone required: ${tone.label}`;
+
+    try {
+      const response = await puter.ai.chat(
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user',   content: userMessage  }
+        ],
+        { model: 'qwen/qwen3.5-27b' }
+      );
+
+      const rawText = (typeof response === 'string')
+        ? response
+        : (response?.message?.content || response?.toString() || '');
+
+      // Parse SUBJECT: line and body
+      const subjectMatch = rawText.match(/^SUBJECT:\s*(.+)/im);
+      const subject      = subjectMatch ? subjectMatch[1].trim() : `Follow-up: Invoice ${inv.id}`;
+      const body         = rawText
+        .replace(/^SUBJECT:\s*.+\n?/im, '')
+        .trim();
+
+      // Store draft for copy/mailto
+      _currentDraft = {
+        subject,
+        body,
+        clientEmail: inv.clientEmail || ''
+      };
+
+      // Populate modal
+      document.getElementById('modalLoading').style.display = 'none';
+      document.getElementById('modalResult').style.display  = 'block';
+
+      const toneBadgeEl = document.getElementById('modalToneBadge');
+      toneBadgeEl.textContent  = `${tone.emoji}  ${tone.label}`;
+      toneBadgeEl.className    = `modal-tone-badge ${tone.key}`;
+
+      document.getElementById('modalSubject').value = subject;
+      document.getElementById('modalBody').value    = body;
+
+    } catch (err) {
+      console.error('Email draft error:', err);
+      document.getElementById('modalLoading').style.display  = 'none';
+      document.getElementById('modalError').style.display    = 'flex';
+      document.getElementById('modalErrorMsg').textContent   =
+        'AI drafting failed. Please check your connection and try again.';
+    }
+  }
+
+  /** Closes the email modal on overlay click (but not on card click). */
+  function closeEmailModal(event) {
+    if (event && event.target !== document.getElementById('emailModal')) return;
+    _closeModal();
+  }
+
+  function _closeModal() {
+    const modal = document.getElementById('emailModal');
+    modal.classList.remove('visible');
+    document.body.style.overflow = '';
+    // Reset states for next open
+    setTimeout(() => {
+      document.getElementById('modalLoading').style.display = 'flex';
+      document.getElementById('modalResult').style.display  = 'none';
+      document.getElementById('modalError').style.display   = 'none';
+    }, 200);
+  }
+
+  /** Copies the full subject + body to clipboard. */
+  async function copyEmailDraft() {
+    const subject = document.getElementById('modalSubject').value;
+    const body    = document.getElementById('modalBody').value;
+    const full    = `Subject: ${subject}\n\n${body}`;
+    try {
+      await navigator.clipboard.writeText(full);
+      showToast('Email draft copied to clipboard!');
+    } catch (e) {
+      // Fallback for browsers that block clipboard API
+      const ta = document.createElement('textarea');
+      ta.value = full;
+      ta.style.position = 'fixed';
+      ta.style.opacity  = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showToast('Email draft copied!');
+    }
+  }
+
+  /** Opens the draft in the user's default mail client via mailto:. */
+  function openInMailClient() {
+    const subject = encodeURIComponent(_currentDraft.subject);
+    const body    = encodeURIComponent(_currentDraft.body);
+    const to      = encodeURIComponent(_currentDraft.clientEmail);
+    const mailto  = `mailto:${to}?subject=${subject}&body=${body}`;
+    window.location.href = mailto;
   }
 
   /* ══════════ LOAD INVOICE INTO EDITOR ══════════ */
@@ -304,7 +512,9 @@ const App = (() => {
       if (!inv) return;
       currentCurrency = inv.currency || '$';
       const sel = document.getElementById('currencySelect');
-      for (let opt of sel.options) { if (opt.value === currentCurrency) sel.value = currentCurrency; }
+      for (let opt of sel.options) {
+        if (opt.value === currentCurrency) { sel.value = currentCurrency; break; }
+      }
       document.getElementById('invoiceNumber').textContent = inv.id;
       document.getElementById('invoiceDate').value         = inv.date;
       document.getElementById('invoiceDue').value          = inv.due;
@@ -388,16 +598,20 @@ const App = (() => {
     if (settings.phone) parts.push(escHtml(settings.phone));
     if (settings.email) parts.push(`<a href="mailto:${escHtml(settings.email)}">${escHtml(settings.email)}</a>`);
     const socialMap = [
-      { key: 'linkedin', label: 'LinkedIn' }, { key: 'instagram', label: 'Instagram' },
-      { key: 'twitter',  label: 'X' },        { key: 'github',    label: 'GitHub' }
+      { key: 'linkedin',  label: 'LinkedIn'  },
+      { key: 'instagram', label: 'Instagram' },
+      { key: 'twitter',   label: 'X'         },
+      { key: 'github',    label: 'GitHub'    }
     ];
     socialMap.forEach(({ key, label }) => {
-      if (settings[key]) parts.push(`<a href="${escHtml(settings[key])}" target="_blank" rel="noopener">${label}</a>`);
+      if (settings[key]) parts.push(
+        `<a href="${escHtml(settings[key])}" target="_blank" rel="noopener">${label}</a>`
+      );
     });
     contactEl.innerHTML = parts.join(' &nbsp;·&nbsp; ');
     if (settings.logoUrl) {
       const logo = document.getElementById('invoiceLogo');
-      logo.src = settings.logoUrl;
+      logo.src   = settings.logoUrl;
       logo.style.display = 'block';
     }
   }
@@ -420,7 +634,7 @@ const App = (() => {
       settings.logoUrl = url;
       await puter.kv.set(KV_SETTINGS, settings);
       const preview = document.getElementById('settingsLogoPreview');
-      preview.src = url;
+      preview.src   = url;
       preview.style.display = 'block';
       document.getElementById('logoPlaceholder').style.display = 'none';
       applySettingsToInvoice();
@@ -445,7 +659,7 @@ const App = (() => {
   function showToast(msg) {
     let toast = document.getElementById('toast');
     if (!toast) {
-      toast = document.createElement('div');
+      toast    = document.createElement('div');
       toast.id = 'toast';
       document.body.appendChild(toast);
     }
@@ -456,9 +670,20 @@ const App = (() => {
   }
 
   /* ══════════ UTILITIES ══════════ */
-  function fmt(n)     { return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function fmt(n) {
+    return Number(n).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  }
   function fmtDate(d) { return d.toISOString().split('T')[0]; }
-  function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g,  '&amp;')
+      .replace(/</g,  '&lt;')
+      .replace(/>/g,  '&gt;')
+      .replace(/"/g,  '&quot;');
+  }
 
   /* ══════════ PUBLIC API ══════════ */
   return {
@@ -468,7 +693,9 @@ const App = (() => {
     setCurrency, newInvoice, runMagicParse,
     saveInvoice, clearInvoice, loadHistory,
     loadInvoiceToEditor, deleteInvoice,
-    saveSettings, uploadLogo
+    saveSettings, uploadLogo,
+    openEmailModal, closeEmailModal,
+    copyEmailDraft, openInMailClient
   };
 })();
 
