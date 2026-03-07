@@ -1,23 +1,48 @@
 /* ═══════════════════════════════════════════════════════════
    EliteInvoice — Application Logic
-   Stack: Puter.js v2 (puter.kv, puter.fs, puter.ai)
-   AI Model: qwen/qwen3.5-27b
+   Stack : Puter.js v2  (puter.kv, puter.fs, puter.ai)
+   AI    : qwen/qwen3.5-27b
+   FX    : Frankfurter API (primary) → open.er-api.com (fallback)
+═══════════════════════════════════════════════════════════ */
 
-   ╔══════════════════════════════════════════════════╗
-   ║  DEFAULT TAX RATE                                ║
-   ║  Change the number below to set the default tax  ║
-   ║  percentage that pre-fills on every new invoice. ║
-   ║  Example: 8 = 8%, 0 = no tax, 20 = 20% VAT      ║
-   ╚══════════════════════════════════════════════════╝     */
 const DEFAULT_TAX_RATE = 10;
+const DEFAULT_BASE_CCY = 'USD';
 
 const KV_SETTINGS  = 'eliteinvoice_settings';
 const KV_INVOICES  = 'eliteinvoice_invoices';
 const KV_COUNTER   = 'eliteinvoice_counter';
+const KV_BASE_CCY  = 'eliteinvoice_base_currency';
 const FS_LOGO_PATH = 'eliteinvoice_logo';
 
+const CCY_META = {
+  '$':  { code: 'USD', symbol: '$'  },
+  '€':  { code: 'EUR', symbol: '€'  },
+  '£':  { code: 'GBP', symbol: '£'  },
+  '₱':  { code: 'PHP', symbol: '₱'  },
+  '¥':  { code: 'JPY', symbol: '¥'  },
+  'A$': { code: 'AUD', symbol: 'A$' },
+  'C$': { code: 'CAD', symbol: 'C$' },
+};
+
+const CODE_TO_SYM = Object.fromEntries(
+  Object.entries(CCY_META).map(([sym, { code }]) => [code, sym])
+);
+
 const App = (() => {
-  let currentCurrency = '$';
+
+  let currentCurrency  = '$';
+  let baseCurrency     = DEFAULT_BASE_CCY;
+  let fxRates          = {};
+  let fxRatesOk        = false;
+
+  /*
+   * _editingIndex — tracks which invoice is currently loaded
+   * for editing.  null  = composing a brand-new invoice.
+   * number = index into the saved invoices array; the Update
+   * button is shown and Save Invoice is hidden in this state.
+   */
+  let _editingIndex = null;
+
   let settings = {
     bizName: '', bizAddress: '',
     phone: '', email: '',
@@ -25,20 +50,131 @@ const App = (() => {
     logoUrl: ''
   };
 
-  // Holds the current email draft for the mailto builder
   let _currentDraft = { subject: '', body: '', clientEmail: '' };
 
   /* ══════════ INIT ══════════ */
   async function init() {
     const today = new Date();
-    document.getElementById('invoiceDate').value = fmtDate(today);
+    document.getElementById('invoiceDate').value  = fmtDate(today);
     const due = new Date(today); due.setDate(due.getDate() + 30);
-    document.getElementById('invoiceDue').value = fmtDate(due);
+    document.getElementById('invoiceDue').value   = fmtDate(due);
     document.getElementById('taxRateInput').value = DEFAULT_TAX_RATE;
     addRow();
+
+    await loadBaseCurrency();
     await loadSettings();
     await resolveInvoiceNumber();
+
+    fetchFxRates().catch(e => console.warn('FX fetch failed on init:', e));
     updateStatus('online', 'Puter connected');
+  }
+
+  /* ══════════ EDIT-MODE UI HELPERS ══════════ */
+
+  /**
+   * setEditMode(index)
+   * Switches the invoice toolbar into "editing an existing invoice" mode.
+   * Hides "Save Invoice", shows "Update Invoice" + a "Cancel Edit" button.
+   * Passing null resets back to new-invoice mode.
+   */
+  function setEditMode(index) {
+    _editingIndex = index;
+    const isEditing = index !== null;
+
+    document.getElementById('btnSaveInvoice').style.display   = isEditing ? 'none'  : '';
+    document.getElementById('btnUpdateInvoice').style.display = isEditing ? ''      : 'none';
+    document.getElementById('btnCancelEdit').style.display    = isEditing ? ''      : 'none';
+
+    // Visual cue on the invoice document itself
+    const doc = document.getElementById('invoiceDocument');
+    if (isEditing) {
+      doc.classList.add('is-editing');
+    } else {
+      doc.classList.remove('is-editing');
+    }
+  }
+
+  /* ══════════ BASE CURRENCY ══════════ */
+  async function loadBaseCurrency() {
+    try {
+      const saved = await puter.kv.get(KV_BASE_CCY);
+      if (saved) baseCurrency = saved;
+    } catch (_) {}
+    const sel = document.getElementById('baseCurrencySelect');
+    if (sel) sel.value = baseCurrency;
+  }
+
+  async function saveBaseCurrency(code) {
+    baseCurrency = code;
+    try { await puter.kv.set(KV_BASE_CCY, code); }
+    catch (e) { console.warn('Could not persist base currency:', e); }
+    await fetchFxRates();
+    if (document.getElementById('view-history').classList.contains('active'))
+      loadHistory();
+    showToast(`Base currency set to ${code}`);
+  }
+
+  /* ══════════ LIVE FX RATES ══════════ */
+  async function _fetchFrankfurter() {
+    const res  = await fetch(`https://api.frankfurter.app/latest?from=${baseCurrency}`);
+    if (!res.ok) throw new Error(`Frankfurter HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data.rates || typeof data.rates !== 'object')
+      throw new Error('Frankfurter: unexpected shape');
+    return { ...data.rates, [baseCurrency]: 1 };
+  }
+
+  async function _fetchOpenER() {
+    const res  = await fetch(`https://open.er-api.com/v6/latest/${baseCurrency}`);
+    if (!res.ok) throw new Error(`OpenER HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.result !== 'success' || !data.rates)
+      throw new Error('OpenER: result not success');
+    return { ...data.rates, [baseCurrency]: 1 };
+  }
+
+  async function fetchFxRates() {
+    fxRatesOk = false;
+    try {
+      fxRates   = await _fetchFrankfurter();
+      fxRatesOk = true;
+      console.info('FX: Frankfurter OK');
+      return true;
+    } catch (e) {
+      console.warn('Frankfurter failed, trying fallback…', e.message);
+    }
+    try {
+      fxRates   = await _fetchOpenER();
+      fxRatesOk = true;
+      console.info('FX: open.er-api fallback OK');
+      return true;
+    } catch (e) {
+      console.warn('Both FX sources failed.', e.message);
+    }
+    fxRates   = {};
+    fxRatesOk = false;
+    return false;
+  }
+
+  function convertToBase(amount, fromSymbol) {
+    const meta = CCY_META[fromSymbol];
+    if (!meta) return amount;
+    const fromCode = meta.code;
+    if (fromCode === baseCurrency) return amount;
+    const rate = fxRates[fromCode];
+    if (!rate || rate === 0) return amount;
+    return amount / rate;
+  }
+
+  function fmtBase(amount) {
+    try {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency', currency: baseCurrency,
+        minimumFractionDigits: 2, maximumFractionDigits: 2
+      }).format(amount);
+    } catch (_) {
+      return (CODE_TO_SYM[baseCurrency] || baseCurrency) + fmt(amount);
+    }
   }
 
   /* ══════════ NAVIGATION ══════════ */
@@ -132,6 +268,7 @@ const App = (() => {
 
   /* ══════════ NEW INVOICE ══════════ */
   async function newInvoice() {
+    setEditMode(null);   // always exit edit mode on New
     document.getElementById('invoiceBody').innerHTML   = '';
     document.getElementById('clientName').value        = '';
     document.getElementById('clientEmail').value       = '';
@@ -147,6 +284,13 @@ const App = (() => {
     await resolveInvoiceNumber();
     addRow();
     showToast('Ready for a new invoice.');
+  }
+
+  /* ══════════ CANCEL EDIT ══════════ */
+  function cancelEdit() {
+    setEditMode(null);
+    newInvoice();
+    showToast('Edit cancelled — form reset.');
   }
 
   /* ══════════ AI MAGIC PARSE ══════════ */
@@ -198,17 +342,15 @@ const App = (() => {
   }
 
   function setMagicStatus(type, msg) {
-    const el = document.getElementById('magicStatus');
-    el.innerHTML = type === 'loading' ? `<span class="spinner"></span> ${msg}` : msg;
-    el.style.color = type === 'ok'
-      ? 'var(--success)'
-      : type === 'err'
-      ? 'var(--danger)'
-      : 'var(--text-secondary)';
+    const el       = document.getElementById('magicStatus');
+    el.innerHTML   = type === 'loading' ? `<span class="spinner"></span> ${msg}` : msg;
+    el.style.color = type === 'ok'  ? 'var(--success)'
+                   : type === 'err' ? 'var(--danger)'
+                   : 'var(--text-secondary)';
   }
 
-  /* ══════════ SAVE INVOICE ══════════ */
-  async function saveInvoice() {
+  /* ══════════ BUILD INVOICE OBJECT FROM FORM ══════════ */
+  function _buildInvoiceFromForm(existingSavedAt) {
     const rows  = document.querySelectorAll('#invoiceBody tr');
     const items = [];
     rows.forEach(row => {
@@ -223,7 +365,7 @@ const App = (() => {
     const subtotal = items.reduce((s, i) => s + i.qty * i.price, 0);
     const tax      = subtotal * (taxPct / 100);
     const total    = subtotal + tax;
-    const invoice  = {
+    return {
       id:          document.getElementById('invoiceNumber').textContent,
       date:        document.getElementById('invoiceDate').value,
       due:         document.getElementById('invoiceDue').value,
@@ -233,8 +375,14 @@ const App = (() => {
       notes:       document.getElementById('invoiceNotes').value,
       currency:    currentCurrency,
       taxPct, items, subtotal, tax, total,
-      savedAt:     new Date().toISOString()
+      savedAt:     existingSavedAt || new Date().toISOString(),
+      updatedAt:   new Date().toISOString()
     };
+  }
+
+  /* ══════════ SAVE INVOICE (new only) ══════════ */
+  async function saveInvoice() {
+    const invoice = _buildInvoiceFromForm(null);
     try {
       let invoices = await puter.kv.get(KV_INVOICES) || [];
       if (typeof invoices === 'string') invoices = JSON.parse(invoices);
@@ -247,6 +395,38 @@ const App = (() => {
     } catch (e) {
       console.error('Save error:', e);
       showToast('Save failed. Please try again.');
+    }
+  }
+
+  /* ══════════ UPDATE INVOICE (edit existing) ══════════ */
+  async function updateInvoice() {
+    if (_editingIndex === null) {
+      showToast('No invoice selected for update.');
+      return;
+    }
+    try {
+      let invoices = await puter.kv.get(KV_INVOICES) || [];
+      if (typeof invoices === 'string') invoices = JSON.parse(invoices);
+
+      if (_editingIndex < 0 || _editingIndex >= invoices.length) {
+        showToast('Invoice not found — it may have been deleted.');
+        setEditMode(null);
+        return;
+      }
+
+      // Preserve the original savedAt timestamp
+      const originalSavedAt = invoices[_editingIndex].savedAt;
+      const updated          = _buildInvoiceFromForm(originalSavedAt);
+
+      invoices[_editingIndex] = updated;
+      await puter.kv.set(KV_INVOICES, invoices);
+
+      showToast('Invoice updated successfully!');
+      setEditMode(null);           // exit edit mode
+      await resolveInvoiceNumber(); // restore next new invoice number
+    } catch (e) {
+      console.error('Update error:', e);
+      showToast('Update failed. Please try again.');
     }
   }
 
@@ -264,11 +444,7 @@ const App = (() => {
     showToast('Invoice cleared.');
   }
 
-  /* ══════════ OVERDUE LOGIC ══════════ */
-  /**
-   * Returns days overdue.
-   * Negative = not yet due, 0 = due today, positive = overdue.
-   */
+  /* ══════════ OVERDUE HELPERS ══════════ */
   function daysOverdue(dueDateStr) {
     if (!dueDateStr) return null;
     const due   = new Date(dueDateStr);
@@ -278,19 +454,84 @@ const App = (() => {
     return Math.floor((today - due) / (1000 * 60 * 60 * 24));
   }
 
-  /**
-   * Returns tone metadata based on days overdue.
-   * Thresholds:
-   *   not due yet  → Gentle Heads-up   (upcoming)
-   *   0–7 days     → Friendly Reminder (friendly)
-   *   8–13 days    → Friendly Reminder (gentle)
-   *   14+ days     → Firm Follow-up    (firm)
-   */
   function getTone(days) {
-    if (days === null || days < 0) return { key: 'upcoming', label: 'Gentle Heads-up',   emoji: '📅' };
-    if (days <= 7)                 return { key: 'friendly', label: 'Friendly Reminder',  emoji: '🔔' };
-    if (days <= 13)                return { key: 'gentle',   label: 'Friendly Reminder',  emoji: '🔔' };
-    return                                { key: 'firm',     label: 'Firm Follow-up',     emoji: '⚠️' };
+    if (days === null || days < 0) return { key: 'upcoming', label: 'Gentle Heads-up',  emoji: '📅' };
+    if (days <= 7)                 return { key: 'friendly', label: 'Friendly Reminder', emoji: '🔔' };
+    if (days <= 13)                return { key: 'gentle',   label: 'Friendly Reminder', emoji: '🔔' };
+    return                                { key: 'firm',     label: 'Firm Follow-up',    emoji: '⚠️' };
+  }
+
+  /* ══════════ REVENUE DASHBOARD ══════════ */
+  async function calculateTotalRevenue(invoices) {
+    let grandTotal   = 0;
+    let overdueCount = 0;
+    const byCurrency = {};
+    invoices.forEach(inv => {
+      const sym   = inv.currency || '$';
+      const total = parseFloat(inv.total) || 0;
+      grandTotal += convertToBase(total, sym);
+      byCurrency[sym] = (byCurrency[sym] || 0) + total;
+      const days = daysOverdue(inv.due);
+      if (days !== null && days > 0) overdueCount++;
+    });
+    const count = invoices.length;
+    const avg   = count > 0 ? grandTotal / count : 0;
+    return { grandTotal, byCurrency, count, overdueCount, avg };
+  }
+
+  function renderRevenueDashboard(stats) {
+    const { grandTotal, byCurrency, count, overdueCount, avg } = stats;
+    const amountEl = document.getElementById('revenueTotalAmount');
+    const labelEl  = document.getElementById('revenueBaseCcyLabel');
+    amountEl.classList.add('updating');
+    setTimeout(() => {
+      if (fxRatesOk) {
+        labelEl.textContent = `Converted to ${baseCurrency} · live rates`;
+        labelEl.style.color = 'rgba(255,255,255,0.38)';
+        labelEl.title       = '';
+      } else {
+        labelEl.textContent = '⚠️ Live rates unavailable — amounts shown in original currencies';
+        labelEl.style.color = '#ffcc00';
+        labelEl.title       = 'Both Frankfurter and open.er-api.com could not be reached.';
+      }
+      if (count === 0) {
+        amountEl.textContent = '—';
+        document.getElementById('revenueMultiCurrency').innerHTML  = '';
+        document.getElementById('revenueInvoiceCount').textContent = '0';
+        document.getElementById('revenueAvgValue').textContent     = '—';
+        const ov = document.getElementById('revenueOverdueCount');
+        ov.textContent = '0';
+        ov.className   = 'revenue-stat-value no-overdue';
+        amountEl.classList.remove('updating');
+        return;
+      }
+      amountEl.textContent = fmtBase(grandTotal);
+      amountEl.classList.remove('updating');
+      const chipContainer = document.getElementById('revenueMultiCurrency');
+      const currencies    = Object.keys(byCurrency);
+      if (currencies.length > 1 ||
+          (currencies.length === 1 && CCY_META[currencies[0]]?.code !== baseCurrency)) {
+        chipContainer.innerHTML = currencies.map(sym => {
+          const converted = convertToBase(byCurrency[sym], sym);
+          const isSame    = CCY_META[sym]?.code === baseCurrency;
+          return `<span class="rev-currency-chip" title="${escHtml(sym)}${fmt(byCurrency[sym])}">
+            ${escHtml(sym)}${fmt(byCurrency[sym])}
+            ${!isSame && fxRatesOk
+              ? `<span class="chip-converted">≈ ${fmtBase(converted)}</span>`
+              : ''}
+          </span>`;
+        }).join('');
+      } else {
+        chipContainer.innerHTML = '';
+      }
+      document.getElementById('revenueInvoiceCount').textContent = count;
+      document.getElementById('revenueAvgValue').textContent     = fmtBase(avg);
+      const overdueEl       = document.getElementById('revenueOverdueCount');
+      overdueEl.textContent = overdueCount;
+      overdueEl.className   = overdueCount === 0
+        ? 'revenue-stat-value no-overdue'
+        : 'revenue-stat-value';
+    }, 150);
   }
 
   /* ══════════ LOAD HISTORY ══════════ */
@@ -300,6 +541,9 @@ const App = (() => {
     try {
       let invoices = await puter.kv.get(KV_INVOICES) || [];
       if (typeof invoices === 'string') invoices = JSON.parse(invoices);
+      if (!fxRatesOk) await fetchFxRates();
+      const stats = await calculateTotalRevenue(invoices);
+      renderRevenueDashboard(stats);
       if (!invoices.length) {
         container.innerHTML = `<div class="empty-state">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40">
@@ -316,77 +560,73 @@ const App = (() => {
           days < 0      ? `Due in ${Math.abs(days)} day${Math.abs(days) !== 1 ? 's' : ''}` :
           days === 0    ? 'Due today' :
                           `${days} day${days !== 1 ? 's' : ''} overdue`;
+        const invCode       = CCY_META[inv.currency]?.code;
+        const showConverted = invCode && invCode !== baseCurrency && fxRatesOk;
+        const convertedStr  = showConverted
+          ? `<span class="hc-converted">≈ ${fmtBase(convertToBase(inv.total, inv.currency))}</span>`
+          : '';
+        // Show "Updated" timestamp if the invoice has been edited
+        const timestampStr = inv.updatedAt
+          ? `Updated ${new Date(inv.updatedAt).toLocaleDateString()}`
+          : `Saved ${new Date(inv.savedAt).toLocaleDateString()}`;
         return `
           <div class="history-card">
             <div class="history-card-info">
               <div class="hc-number">${escHtml(inv.id)}</div>
               <div class="hc-client">${escHtml(inv.clientName || 'Unknown Client')}</div>
-              <div class="hc-date">Saved ${new Date(inv.savedAt).toLocaleDateString()}</div>
+              <div class="hc-date">${timestampStr}</div>
               <div class="hc-overdue-badge ${tone.key}">${tone.emoji} ${overdueLabel}</div>
             </div>
-            <div class="history-card-amount">${escHtml(inv.currency)}${fmt(inv.total)}</div>
+            <div class="history-card-amount-group">
+              <div class="history-card-amount">${escHtml(inv.currency)}${fmt(inv.total)}</div>
+              ${convertedStr}
+            </div>
             <div class="history-card-actions">
-              <button class="btn-draft-email" onclick="App.openEmailModal(${idx})" title="Draft follow-up email with AI">
+              <button class="btn-draft-email" onclick="App.openEmailModal(${idx})" title="Draft follow-up email">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="13" height="13">
                   <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
                   <polyline points="22,6 12,13 2,6"/>
                 </svg>
                 Draft Email
               </button>
-              <button class="btn-load" onclick="App.loadInvoiceToEditor(${idx})">Load</button>
+              <button class="btn-load" onclick="App.loadInvoiceToEditor(${idx})">Edit</button>
               <button class="btn-del-invoice" onclick="App.deleteInvoice(${idx})">Delete</button>
             </div>
           </div>`;
       }).join('');
     } catch (e) {
+      console.error('loadHistory error:', e);
       container.innerHTML = '<div class="empty-state"><p>Failed to load invoices.</p></div>';
     }
   }
 
   /* ══════════ AI FOLLOW-UP EMAIL MODAL ══════════ */
-
-  /**
-   * Opens the modal, shows loading state, calls Qwen to draft the email,
-   * then populates the result or shows the error state.
-   */
   async function openEmailModal(idx) {
-    // Fetch the invoice from KV
     let invoices = [];
     try {
       invoices = await puter.kv.get(KV_INVOICES) || [];
       if (typeof invoices === 'string') invoices = JSON.parse(invoices);
-    } catch (e) {
-      showToast('Could not load invoice data.');
-      return;
-    }
+    } catch (e) { showToast('Could not load invoice data.'); return; }
     const inv = invoices[idx];
     if (!inv) { showToast('Invoice not found.'); return; }
-
-    // Show modal in loading state
     const modal = document.getElementById('emailModal');
     modal.classList.add('visible');
     document.body.style.overflow = 'hidden';
-
     document.getElementById('modalInvoiceRef').textContent = inv.id;
     document.getElementById('modalLoading').style.display  = 'flex';
     document.getElementById('modalResult').style.display   = 'none';
     document.getElementById('modalError').style.display    = 'none';
-
-    // Determine tone
     const days = daysOverdue(inv.due);
     const tone = getTone(days);
-
-    // Build context for the AI
     const dueDateFormatted = inv.due
       ? new Date(inv.due).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
       : 'No due date specified';
-    const amountFormatted  = `${inv.currency}${fmt(inv.total)}`;
-    const overdueContext   =
+    const amountFormatted = `${inv.currency}${fmt(inv.total)}`;
+    const overdueContext  =
       days === null ? 'The invoice has no due date.' :
-      days < 0      ? `The invoice is not yet due — it is due in ${Math.abs(days)} day(s) on ${dueDateFormatted}.` :
-      days === 0    ? `The invoice is due TODAY (${dueDateFormatted}).` :
-                      `The invoice is ${days} day(s) overdue. It was due on ${dueDateFormatted}.`;
-
+      days < 0      ? `Not yet due — due in ${Math.abs(days)} day(s) on ${dueDateFormatted}.` :
+      days === 0    ? `Due TODAY (${dueDateFormatted}).` :
+                      `${days} day(s) overdue. Was due on ${dueDateFormatted}.`;
     const systemPrompt =
       'You are a professional business assistant. Based on the provided invoice data, ' +
       'write a polite but clear follow-up email.\n' +
@@ -397,7 +637,6 @@ const App = (() => {
       'Include the invoice number and a "Pay Now" link placeholder: [PAY NOW LINK].\n' +
       'Output ONLY the email in this exact format (no extra text, no markdown):\n' +
       'SUBJECT: <subject line here>\n\n<email body here>';
-
     const userMessage =
       `Client Name: ${inv.clientName || 'Valued Client'}\n` +
       `Client Email: ${inv.clientEmail || 'N/A'}\n` +
@@ -406,65 +645,41 @@ const App = (() => {
       `Due Date: ${dueDateFormatted}\n` +
       `Status: ${overdueContext}\n` +
       `Tone required: ${tone.label}`;
-
     try {
       const response = await puter.ai.chat(
-        [
-          { role: 'system', content: systemPrompt },
-          { role: 'user',   content: userMessage  }
-        ],
+        [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }],
         { model: 'qwen/qwen3.5-27b' }
       );
-
-      const rawText = (typeof response === 'string')
+      const rawText      = typeof response === 'string'
         ? response
         : (response?.message?.content || response?.toString() || '');
-
-      // Parse SUBJECT: line and body
       const subjectMatch = rawText.match(/^SUBJECT:\s*(.+)/im);
       const subject      = subjectMatch ? subjectMatch[1].trim() : `Follow-up: Invoice ${inv.id}`;
-      const body         = rawText
-        .replace(/^SUBJECT:\s*.+\n?/im, '')
-        .trim();
-
-      // Store draft for copy/mailto
-      _currentDraft = {
-        subject,
-        body,
-        clientEmail: inv.clientEmail || ''
-      };
-
-      // Populate modal
+      const body         = rawText.replace(/^SUBJECT:\s*.+\n?/im, '').trim();
+      _currentDraft = { subject, body, clientEmail: inv.clientEmail || '' };
       document.getElementById('modalLoading').style.display = 'none';
       document.getElementById('modalResult').style.display  = 'block';
-
-      const toneBadgeEl = document.getElementById('modalToneBadge');
-      toneBadgeEl.textContent  = `${tone.emoji}  ${tone.label}`;
-      toneBadgeEl.className    = `modal-tone-badge ${tone.key}`;
-
+      const badge       = document.getElementById('modalToneBadge');
+      badge.textContent = `${tone.emoji}  ${tone.label}`;
+      badge.className   = `modal-tone-badge ${tone.key}`;
       document.getElementById('modalSubject').value = subject;
       document.getElementById('modalBody').value    = body;
-
     } catch (err) {
       console.error('Email draft error:', err);
-      document.getElementById('modalLoading').style.display  = 'none';
-      document.getElementById('modalError').style.display    = 'flex';
-      document.getElementById('modalErrorMsg').textContent   =
+      document.getElementById('modalLoading').style.display = 'none';
+      document.getElementById('modalError').style.display   = 'flex';
+      document.getElementById('modalErrorMsg').textContent  =
         'AI drafting failed. Please check your connection and try again.';
     }
   }
 
-  /** Closes the email modal on overlay click (but not on card click). */
   function closeEmailModal(event) {
     if (event && event.target !== document.getElementById('emailModal')) return;
     _closeModal();
   }
-
   function _closeModal() {
-    const modal = document.getElementById('emailModal');
-    modal.classList.remove('visible');
+    document.getElementById('emailModal').classList.remove('visible');
     document.body.style.overflow = '';
-    // Reset states for next open
     setTimeout(() => {
       document.getElementById('modalLoading').style.display = 'flex';
       document.getElementById('modalResult').style.display  = 'none';
@@ -472,35 +687,25 @@ const App = (() => {
     }, 200);
   }
 
-  /** Copies the full subject + body to clipboard. */
   async function copyEmailDraft() {
-    const subject = document.getElementById('modalSubject').value;
-    const body    = document.getElementById('modalBody').value;
-    const full    = `Subject: ${subject}\n\n${body}`;
+    const full = `Subject: ${document.getElementById('modalSubject').value}\n\n${document.getElementById('modalBody').value}`;
     try {
       await navigator.clipboard.writeText(full);
       showToast('Email draft copied to clipboard!');
-    } catch (e) {
-      // Fallback for browsers that block clipboard API
+    } catch (_) {
       const ta = document.createElement('textarea');
-      ta.value = full;
-      ta.style.position = 'fixed';
-      ta.style.opacity  = '0';
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
+      ta.value = full; ta.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
       showToast('Email draft copied!');
     }
   }
 
-  /** Opens the draft in the user's default mail client via mailto:. */
   function openInMailClient() {
-    const subject = encodeURIComponent(_currentDraft.subject);
-    const body    = encodeURIComponent(_currentDraft.body);
-    const to      = encodeURIComponent(_currentDraft.clientEmail);
-    const mailto  = `mailto:${to}?subject=${subject}&body=${body}`;
-    window.location.href = mailto;
+    const s = encodeURIComponent(_currentDraft.subject);
+    const b = encodeURIComponent(_currentDraft.body);
+    const t = encodeURIComponent(_currentDraft.clientEmail);
+    window.location.href = `mailto:${t}?subject=${s}&body=${b}`;
   }
 
   /* ══════════ LOAD INVOICE INTO EDITOR ══════════ */
@@ -523,13 +728,15 @@ const App = (() => {
       document.getElementById('clientAddress').value       = inv.clientAddr;
       document.getElementById('invoiceNotes').value        = inv.notes;
       document.getElementById('taxRateInput').value        = inv.taxPct;
-      document.getElementById('invoiceBody').innerHTML = '';
+      document.getElementById('invoiceBody').innerHTML     = '';
       inv.items.forEach(item => addRow(item.desc, item.qty, item.price));
+
+      // Enter edit mode — toolbar swaps to Update + Cancel Edit
+      setEditMode(idx);
+
       navigate('invoice');
-      showToast('Invoice loaded into editor.');
-    } catch (e) {
-      showToast('Failed to load invoice.');
-    }
+      showToast(`Editing ${inv.id} — make changes and click Update Invoice.`);
+    } catch (e) { showToast('Failed to load invoice.'); }
   }
 
   /* ══════════ DELETE INVOICE ══════════ */
@@ -541,9 +748,7 @@ const App = (() => {
       await puter.kv.set(KV_INVOICES, invoices);
       showToast('Invoice deleted.');
       loadHistory();
-    } catch (e) {
-      showToast('Delete failed.');
-    }
+    } catch (e) { showToast('Delete failed.'); }
   }
 
   /* ══════════ SETTINGS: LOAD ══════════ */
@@ -562,12 +767,14 @@ const App = (() => {
         document.getElementById('settingGithub').value     = settings.github     || '';
         applySettingsToInvoice();
       }
-    } catch (e) { /* silent */ }
+    } catch (_) {}
+    const sel = document.getElementById('baseCurrencySelect');
+    if (sel) sel.value = baseCurrency;
   }
 
   /* ══════════ SETTINGS: SAVE ══════════ */
   async function saveSettings() {
-    const statusEl = document.getElementById('settingsSaveStatus');
+    const statusEl      = document.getElementById('settingsSaveStatus');
     settings.bizName    = document.getElementById('settingBizName').value.trim();
     settings.bizAddress = document.getElementById('settingBizAddress').value.trim();
     settings.phone      = document.getElementById('settingPhone').value.trim();
@@ -594,24 +801,25 @@ const App = (() => {
     document.getElementById('invoiceBizName').textContent    = settings.bizName    || 'Your Business Name';
     document.getElementById('invoiceBizAddress').textContent = settings.bizAddress || '123 Main Street, City, Country';
     const contactEl = document.getElementById('invoiceBizContact');
-    const parts = [];
+    const parts     = [];
     if (settings.phone) parts.push(escHtml(settings.phone));
-    if (settings.email) parts.push(`<a href="mailto:${escHtml(settings.email)}">${escHtml(settings.email)}</a>`);
-    const socialMap = [
+    if (settings.email) parts.push(
+      `<a href="mailto:${escHtml(settings.email)}">${escHtml(settings.email)}</a>`
+    );
+    [
       { key: 'linkedin',  label: 'LinkedIn'  },
       { key: 'instagram', label: 'Instagram' },
       { key: 'twitter',   label: 'X'         },
       { key: 'github',    label: 'GitHub'    }
-    ];
-    socialMap.forEach(({ key, label }) => {
+    ].forEach(({ key, label }) => {
       if (settings[key]) parts.push(
         `<a href="${escHtml(settings[key])}" target="_blank" rel="noopener">${label}</a>`
       );
     });
     contactEl.innerHTML = parts.join(' &nbsp;·&nbsp; ');
     if (settings.logoUrl) {
-      const logo = document.getElementById('invoiceLogo');
-      logo.src   = settings.logoUrl;
+      const logo         = document.getElementById('invoiceLogo');
+      logo.src           = settings.logoUrl;
       logo.style.display = 'block';
     }
   }
@@ -623,18 +831,17 @@ const App = (() => {
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
       statusEl.textContent = '✗ File too large (max 2MB)';
-      statusEl.className   = 'upload-status err';
-      return;
+      statusEl.className   = 'upload-status err'; return;
     }
     statusEl.innerHTML = '<span class="spinner"></span> Uploading…';
     statusEl.className = 'upload-status';
     try {
       await puter.fs.write(FS_LOGO_PATH, file, { overwrite: true });
-      const url = await puter.fs.getReadURL(FS_LOGO_PATH);
+      const url        = await puter.fs.getReadURL(FS_LOGO_PATH);
       settings.logoUrl = url;
       await puter.kv.set(KV_SETTINGS, settings);
-      const preview = document.getElementById('settingsLogoPreview');
-      preview.src   = url;
+      const preview         = document.getElementById('settingsLogoPreview');
+      preview.src           = url;
       preview.style.display = 'block';
       document.getElementById('logoPlaceholder').style.display = 'none';
       applySettingsToInvoice();
@@ -642,7 +849,6 @@ const App = (() => {
       statusEl.className   = 'upload-status ok';
       showToast('Logo uploaded!');
     } catch (e) {
-      console.error('Logo upload error:', e);
       statusEl.textContent = '✗ Upload failed — try again';
       statusEl.className   = 'upload-status err';
     }
@@ -672,17 +878,14 @@ const App = (() => {
   /* ══════════ UTILITIES ══════════ */
   function fmt(n) {
     return Number(n).toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
+      minimumFractionDigits: 2, maximumFractionDigits: 2
     });
   }
   function fmtDate(d) { return d.toISOString().split('T')[0]; }
   function escHtml(s) {
     return String(s)
-      .replace(/&/g,  '&amp;')
-      .replace(/</g,  '&lt;')
-      .replace(/>/g,  '&gt;')
-      .replace(/"/g,  '&quot;');
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   /* ══════════ PUBLIC API ══════════ */
@@ -690,12 +893,14 @@ const App = (() => {
     init, navigate,
     toggleSidebar, closeSidebar,
     addRow, deleteRow, updateTotals,
-    setCurrency, newInvoice, runMagicParse,
-    saveInvoice, clearInvoice, loadHistory,
+    setCurrency, newInvoice, cancelEdit, runMagicParse,
+    saveInvoice, updateInvoice, clearInvoice, loadHistory,
     loadInvoiceToEditor, deleteInvoice,
     saveSettings, uploadLogo,
+    saveBaseCurrency,
     openEmailModal, closeEmailModal,
-    copyEmailDraft, openInMailClient
+    copyEmailDraft, openInMailClient,
+    calculateTotalRevenue
   };
 })();
 
