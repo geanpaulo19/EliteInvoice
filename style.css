@@ -18,6 +18,115 @@
   --success:       #34c759;
   --warning:       #ff9f0a;
   --sidebar-w:     240px;
+}
+
+/* ── Dark theme ── */
+[data-theme="dark"] {
+  --bg:            #1c1c1e;
+  --surface:       #2c2c2e;
+  --border:        #3a3a3c;
+  --border-light:  #2c2c2e;
+  --text-primary:  #f5f5f7;
+  --text-secondary:#a1a1a6;
+  --text-tertiary: #636366;
+}
+
+[data-theme="dark"] .sidebar          { background: #111113; }
+[data-theme="dark"] .hamburger        { background: rgba(30,30,32,0.92); border-color: #3a3a3c; }
+[data-theme="dark"] .hamburger:hover  { background: #2c2c2e; }
+[data-theme="dark"] .invoice-doc      { background: #2c2c2e; color: #f5f5f7; }
+[data-theme="dark"] .invoice-doc input,
+[data-theme="dark"] .invoice-doc textarea { background: transparent; color: #f5f5f7; }
+[data-theme="dark"] .invoice-doc th   { background: #1c1c1e; color: #f5f5f7; }
+[data-theme="dark"] .invoice-doc td,
+[data-theme="dark"] .invoice-doc tr   { border-color: #3a3a3c; }
+[data-theme="dark"] input,
+[data-theme="dark"] textarea,
+[data-theme="dark"] select            { background: #2c2c2e; color: #f5f5f7; border-color: #3a3a3c; }
+[data-theme="dark"] input:focus,
+[data-theme="dark"] textarea:focus,
+[data-theme="dark"] #magicInput:focus,
+[data-theme="dark"] .field-input:focus { background: #3a3a3c; border-color: var(--accent); }
+[data-theme="dark"] .history-card     { background: #2c2c2e; border-color: #3a3a3c; }
+[data-theme="dark"] .settings-card    { background: #2c2c2e; border-color: #3a3a3c; }
+[data-theme="dark"] .magic-box        { background: #2c2c2e; border-color: #3a3a3c; }
+[data-theme="dark"] .modal-box        { background: #2c2c2e; }
+[data-theme="dark"] .modal-header     { border-bottom-color: #3a3a3c; }
+[data-theme="dark"] .modal-footer     { border-top-color: #3a3a3c; }
+[data-theme="dark"] .revenue-dashboard { background: linear-gradient(135deg, #1a3a5c 0%, #0d2137 100%); }
+[data-theme="dark"] .sidebar-overlay  { background: rgba(0,0,0,0.6); }
+
+/* ── Nav items ── */
+[data-theme="dark"] .nav-item         { color: #a1a1a6; }
+[data-theme="dark"] .nav-item:hover   { background: #2c2c2e; color: #f5f5f7; }
+[data-theme="dark"] .nav-item.active  { background: rgba(0,113,227,0.18); color: #4da3ff; }
+
+/* ── Primary button — softer blue ── */
+[data-theme="dark"] .btn-primary      { background: #0a84ff; }
+[data-theme="dark"] .btn-primary:hover { background: #0070d8; }
+
+/* ── Secondary button ── */
+[data-theme="dark"] .btn-secondary    { background: #2c2c2e; color: #d1d1d6; border-color: #3a3a3c; }
+[data-theme="dark"] .btn-secondary:hover { background: #3a3a3c; color: #f5f5f7; }
+
+/* ── Ghost button ── */
+[data-theme="dark"] .btn-ghost        { color: #a1a1a6; border-color: #3a3a3c; }
+[data-theme="dark"] .btn-ghost:hover  { background: #2c2c2e; color: #f5f5f7; }
+
+/* ── AI Magic badge pill ── */
+[data-theme="dark"] .magic-badge      { background: linear-gradient(135deg, #0d2a4a 0%, #1a1040 100%); color: #4da3ff; }
+[data-theme="dark"] .modal-ai-badge   { background: linear-gradient(135deg, #0d2a4a 0%, #1a1040 100%); color: #4da3ff; }
+
+/* ── Overdue / status badges ── */
+[data-theme="dark"] .hc-overdue-badge.upcoming { background: #0d2e18; color: #4ade80; }
+[data-theme="dark"] .hc-overdue-badge.gentle   { background: #2e1f00; color: #fbbf24; }
+[data-theme="dark"] .hc-overdue-badge.friendly { background: #2e1500; color: #fb923c; }
+[data-theme="dark"] .hc-overdue-badge.firm     { background: #2e0a0a; color: #f87171; }
+[data-theme="dark"] .modal-tone-badge.upcoming { background: #0d2e18; color: #4ade80; }
+[data-theme="dark"] .modal-tone-badge.gentle   { background: #2e1f00; color: #fbbf24; }
+[data-theme="dark"] .modal-tone-badge.friendly { background: #2e1500; color: #fb923c; }
+[data-theme="dark"] .modal-tone-badge.firm     { background: #2e0a0a; color: #f87171; }
+
+/* ── Delete / danger button ── */
+[data-theme="dark"] .btn-del-invoice  { background: #2e0a0a; color: #f87171; border-color: #3a1010; }
+[data-theme="dark"] .btn-del-invoice:hover { background: #3d0f0f; }
+
+/* ── Draft email button ── */
+[data-theme="dark"] .btn-draft-email  { background: rgba(0,113,227,0.15); color: #4da3ff; border-color: rgba(0,113,227,0.3); }
+[data-theme="dark"] .btn-draft-email:hover { background: rgba(0,113,227,0.25); }
+
+/* ── Load/Edit button ── */
+[data-theme="dark"] .btn-load         { background: #1c2e1c; color: #4ade80; border-color: #1a3a1a; }
+[data-theme="dark"] .btn-load:hover   { background: #243824; }
+
+/* ── Status dot ── */
+[data-theme="dark"] .status-dot.online  { background: #4ade80; }
+[data-theme="dark"] .status-dot.loading { background: #fbbf24; }
+[data-theme="dark"] .status-dot.offline { background: #f87171; }
+
+/* Theme toggle icon visibility */
+.theme-icon-dark  { display: none; align-items: center; gap: 6px; }
+.theme-icon-light { display: flex; align-items: center; gap: 6px; }
+[data-theme="dark"] .theme-icon-dark  { display: flex; }
+[data-theme="dark"] .theme-icon-light { display: none; }
+
+/* history-actions button group */
+.history-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Print always white */
+@media print {
+  [data-theme="dark"] .invoice-doc    { background: #fff !important; color: #000 !important; }
+  [data-theme="dark"] .invoice-doc input,
+  [data-theme="dark"] .invoice-doc textarea { color: #000 !important; }
+}
+
+/* Fake closing brace — reopen :root */
+:root {
   --radius-sm:     8px;
   --radius-md:     12px;
   --radius-lg:     16px;
@@ -854,26 +963,98 @@ body { display: flex; min-height: 100vh; }
 ══════════════════════════════════════════════════ */
 @media print {
   @page { size: A4; margin: 16mm 14mm; }
-  body { background: #fff; }
+
+  /* ── Render backgrounds and graphics exactly as on screen ── */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* ── Force light mode variables regardless of theme ── */
+  :root, [data-theme="dark"] {
+    --bg:            #f5f5f7 !important;
+    --surface:       #ffffff !important;
+    --border:        #d2d2d7 !important;
+    --border-light:  #e8e8ed !important;
+    --text-primary:  #000000 !important;
+    --text-secondary:#333333 !important;
+    --text-tertiary: #555555 !important;
+  }
+
+  body { background: #fff !important; color: #000 !important; }
+
   .sidebar, .view-header, .magic-card, .table-actions,
   .no-print, .hamburger, .sidebar-overlay, .app-footer,
   #toast, .modal-overlay, .revenue-dashboard,
   .edit-mode-banner { display: none !important; }
+
   .page-wrapper  { margin-left: 0 !important; display: block !important; }
   .main-content  { padding: 0 !important; }
   .view          { display: block !important; }
   #view-history, #view-settings { display: none !important; }
+
   .invoice-document {
     border: none !important; box-shadow: none !important;
     border-radius: 0 !important; padding: 0 !important;
     max-width: 100% !important; width: 100%;
+    background: #fff !important; color: #000 !important;
   }
-  .invoice-table { page-break-inside: avoid; }
-  tr { page-break-inside: avoid; }
+
+  /* Override any dark-mode element-level styles */
+  [data-theme="dark"] .invoice-doc,
+  [data-theme="dark"] .invoice-doc input,
+  [data-theme="dark"] .invoice-doc textarea,
+  [data-theme="dark"] .invoice-doc th,
+  [data-theme="dark"] .invoice-doc td,
+  [data-theme="dark"] .invoice-doc tr {
+    background: transparent !important;
+    color: #000 !important;
+    border-color: #d2d2d7 !important;
+  }
+
+  [data-theme="dark"] input,
+  [data-theme="dark"] textarea,
+  [data-theme="dark"] select {
+    background: transparent !important;
+    color: #000 !important;
+    border-color: #d2d2d7 !important;
+  }
+
+  /* Boost contrast — keep colors, just darken them for print readability */
   input, textarea {
     border: none !important; background: transparent !important;
-    -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
+
+  /* Hide calendar picker icons */
+  input[type="date"]::-webkit-calendar-picker-indicator { display: none !important; }
+  input[type="date"] { appearance: none; -webkit-appearance: none; }
+
+  /* Accent-colored elements — deepen the blue for print */
+  :root, [data-theme="dark"] { --accent: #0057b0 !important; }
+
+  /* Primary text → true black */
+  .invoice-biz-name,
+  .invoice-number,
+  .invoice-table th,
+  .invoice-table td,
+  .subtotal-label, .subtotal-val,
+  .tax-label, .tax-val,
+  .total-label, .total-val    { color: #000 !important; }
+
+  /* Secondary text — dark grey, still readable */
+  .invoice-biz-address,
+  .invoice-biz-contact,
+  .invoice-label,
+  .invoice-notes              { color: #2a2a2a !important; }
+
+  /* Links — deeper blue */
+  .invoice-biz-contact a      { color: #0057b0 !important; }
+
+  /* Total row — bold and black */
+  .total-val                  { font-weight: 700 !important; }
+
+  .invoice-table { page-break-inside: avoid; }
+  tr { page-break-inside: avoid; }
   .tax-rate-input { border: none !important; }
 }
 
