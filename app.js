@@ -1,8 +1,9 @@
 /* ═══════════════════════════════════════════════════════════
    EliteInvoice — Application Logic
-   Stack : Puter.js v2  (puter.kv, puter.fs, puter.ai)
-   AI    : qwen/qwen3.5-27b
-   FX    : Frankfurter API (primary) → open.er-api.com (fallback)
+   Storage : localStorage
+   AI      : Groq via Cloudflare Worker proxy
+   Model   : llama-3.1-8b-instant
+   FX      : Frankfurter API (primary) → open.er-api.com (fallback)
 ═══════════════════════════════════════════════════════════ */
 
 const DEFAULT_TAX_RATE = 10;
@@ -12,7 +13,21 @@ const KV_SETTINGS  = 'eliteinvoice_settings';
 const KV_INVOICES  = 'eliteinvoice_invoices';
 const KV_COUNTER   = 'eliteinvoice_counter';
 const KV_BASE_CCY  = 'eliteinvoice_base_currency';
-const FS_LOGO_PATH = 'eliteinvoice_logo';
+const WORKER_URL   = 'https://api.geanpaulofrancois.workers.dev/';
+
+/* ── localStorage helpers ── */
+function kvGet(key) {
+  return Promise.resolve(localStorage.getItem(key));
+}
+function kvSet(key, value) {
+  localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
+  return Promise.resolve();
+}
+function kvDelete(key) {
+  localStorage.removeItem(key);
+  return Promise.resolve();
+}
+const LS_LOGO_KEY  = 'eliteinvoice_logo_b64';   // base64 data-URL stored in localStorage
 
 const CCY_META = {
   '$':  { code: 'USD', symbol: '$'  },
@@ -54,6 +69,8 @@ const App = (() => {
 
   /* ══════════ INIT ══════════ */
   async function init() {
+    initTheme();
+    // Set up dates and defaults immediately — never blocked by network
     const today = new Date();
     document.getElementById('invoiceDate').value  = fmtDate(today);
     const due = new Date(today); due.setDate(due.getDate() + 30);
@@ -61,12 +78,16 @@ const App = (() => {
     document.getElementById('taxRateInput').value = DEFAULT_TAX_RATE;
     addRow();
 
-    await loadBaseCurrency();
-    await loadSettings();
-    await resolveInvoiceNumber();
+    await loadBaseCurrency().catch(e => console.warn('loadBaseCurrency failed:', e));
+    await loadSettings().catch(e => console.warn('loadSettings failed:', e));
+    await resolveInvoiceNumber().catch(e => {
+      console.warn('resolveInvoiceNumber failed:', e);
+      document.getElementById('invoiceNumber').textContent = '#INV-0001';
+    });
 
     fetchFxRates().catch(e => console.warn('FX fetch failed on init:', e));
-    updateStatus('online', 'Puter connected');
+
+    updateStatus('online', 'Ready');
   }
 
   /* ══════════ EDIT-MODE UI HELPERS ══════════ */
@@ -97,7 +118,7 @@ const App = (() => {
   /* ══════════ BASE CURRENCY ══════════ */
   async function loadBaseCurrency() {
     try {
-      const saved = await puter.kv.get(KV_BASE_CCY);
+      const saved = await kvGet(KV_BASE_CCY);
       if (saved) baseCurrency = saved;
     } catch (_) {}
     const sel = document.getElementById('baseCurrencySelect');
@@ -106,7 +127,7 @@ const App = (() => {
 
   async function saveBaseCurrency(code) {
     baseCurrency = code;
-    try { await puter.kv.set(KV_BASE_CCY, code); }
+    try { await kvSet(KV_BASE_CCY, code); }
     catch (e) { console.warn('Could not persist base currency:', e); }
     await fetchFxRates();
     if (document.getElementById('view-history').classList.contains('active'))
@@ -209,10 +230,10 @@ const App = (() => {
   /* ══════════ INVOICE NUMBER ══════════ */
   async function resolveInvoiceNumber() {
     try {
-      let counter = await puter.kv.get(KV_COUNTER);
-      counter = counter ? parseInt(counter) : 0;
+      const counter = await kvGet(KV_COUNTER);
+      const num = counter ? parseInt(counter) : 0;
       document.getElementById('invoiceNumber').textContent =
-        '#INV-' + String(counter + 1).padStart(4, '0');
+        '#INV-' + String(num + 1).padStart(4, '0');
     } catch (e) {
       document.getElementById('invoiceNumber').textContent = '#INV-0001';
     }
@@ -297,27 +318,40 @@ const App = (() => {
   async function runMagicParse() {
     const input = document.getElementById('magicInput').value.trim();
     if (!input) { showToast('Please enter invoice details first.'); return; }
+
+    const workerUrl = WORKER_URL;
     const btn = document.getElementById('magicBtn');
     btn.disabled = true;
     setMagicStatus('loading', 'Parsing with AI…');
+
     const systemPrompt =
       'You are an invoice data extractor. Extract items as a JSON array of ' +
       '{desc, qty, price}. Also, identify the currency symbol used ' +
       '(e.g., $, €, £, ₱). If no symbol is found, default to \'$\'. ' +
-      'Return ONLY valid JSON in this exact shape: ' +
+      'Return ONLY valid JSON in this exact shape, no markdown, no extra text: ' +
       '{"currency":"$","items":[{"desc":"...","qty":1,"price":0}]}';
+
     try {
-      const response = await puter.ai.chat(
-        [{ role: 'system', content: systemPrompt }, { role: 'user', content: input }],
-        { model: 'qwen/qwen3.5-27b' }
-      );
-      const rawText = (typeof response === 'string')
-        ? response
-        : (response?.message?.content || response?.toString() || '');
+      const res = await fetch(workerUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user',   content: input }
+          ]
+        })
+      });
+      if (!res.ok) throw new Error(`Worker responded HTTP ${res.status}`);
+      const data    = await res.json();
+      if (data.error) throw new Error(data.error);
+      const rawText = data.content || '';
+
       const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/) ||
                         rawText.match(/(\{[\s\S]*\})/);
       const jsonStr = jsonMatch ? jsonMatch[1].trim() : rawText.trim();
       const parsed  = JSON.parse(jsonStr);
+
       if (parsed.currency) {
         currentCurrency = parsed.currency;
         const sel = document.getElementById('currencySelect');
@@ -335,7 +369,7 @@ const App = (() => {
       }
     } catch (err) {
       console.error('AI parse error:', err);
-      setMagicStatus('err', 'Parse failed — check input or try again.');
+      setMagicStatus('err', '\u2717 ' + (err.message || 'Unknown error — open F12 Console for details.'));
       showToast('AI parsing failed. Please try again.');
     }
     btn.disabled = false;
@@ -384,12 +418,12 @@ const App = (() => {
   async function saveInvoice() {
     const invoice = _buildInvoiceFromForm(null);
     try {
-      let invoices = await puter.kv.get(KV_INVOICES) || [];
-      if (typeof invoices === 'string') invoices = JSON.parse(invoices);
+      const raw = await kvGet(KV_INVOICES);
+      const invoices = raw ? JSON.parse(raw) : [];
       invoices.unshift(invoice);
-      await puter.kv.set(KV_INVOICES, invoices);
-      let counter = await puter.kv.get(KV_COUNTER) || 0;
-      await puter.kv.set(KV_COUNTER, parseInt(counter) + 1);
+      await kvSet(KV_INVOICES, JSON.stringify(invoices));
+      const rawCounter = await kvGet(KV_COUNTER);
+      await kvSet(KV_COUNTER, String(parseInt(rawCounter || '0') + 1));
       showToast('Invoice saved successfully!');
       await resolveInvoiceNumber();
     } catch (e) {
@@ -405,8 +439,8 @@ const App = (() => {
       return;
     }
     try {
-      let invoices = await puter.kv.get(KV_INVOICES) || [];
-      if (typeof invoices === 'string') invoices = JSON.parse(invoices);
+      const raw = await kvGet(KV_INVOICES);
+      const invoices = raw ? JSON.parse(raw) : [];
 
       if (_editingIndex < 0 || _editingIndex >= invoices.length) {
         showToast('Invoice not found — it may have been deleted.');
@@ -414,16 +448,22 @@ const App = (() => {
         return;
       }
 
-      // Preserve the original savedAt timestamp
       const originalSavedAt = invoices[_editingIndex].savedAt;
       const updated          = _buildInvoiceFromForm(originalSavedAt);
 
       invoices[_editingIndex] = updated;
-      await puter.kv.set(KV_INVOICES, invoices);
+      await kvSet(KV_INVOICES, JSON.stringify(invoices));
 
       showToast('Invoice updated successfully!');
-      setEditMode(null);           // exit edit mode
-      await resolveInvoiceNumber(); // restore next new invoice number
+      // Stay in edit mode — Save Invoice must not appear for an existing invoice
+      const btnUpdate = document.getElementById('btnUpdateInvoice');
+      const origText  = btnUpdate.innerHTML;
+      btnUpdate.innerHTML = '✓ Saved';
+      btnUpdate.disabled  = true;
+      setTimeout(() => {
+        btnUpdate.innerHTML = origText;
+        btnUpdate.disabled  = false;
+      }, 2000);
     } catch (e) {
       console.error('Update error:', e);
       showToast('Update failed. Please try again.');
@@ -539,8 +579,8 @@ const App = (() => {
     const container = document.getElementById('historyList');
     container.innerHTML = '<div class="empty-state"><span class="spinner"></span></div>';
     try {
-      let invoices = await puter.kv.get(KV_INVOICES) || [];
-      if (typeof invoices === 'string') invoices = JSON.parse(invoices);
+      const rawInv = await kvGet(KV_INVOICES);
+      let invoices = rawInv ? JSON.parse(rawInv) : [];
       if (!fxRatesOk) await fetchFxRates();
       const stats = await calculateTotalRevenue(invoices);
       renderRevenueDashboard(stats);
@@ -604,11 +644,14 @@ const App = (() => {
   async function openEmailModal(idx) {
     let invoices = [];
     try {
-      invoices = await puter.kv.get(KV_INVOICES) || [];
-      if (typeof invoices === 'string') invoices = JSON.parse(invoices);
+      const rawEM = await kvGet(KV_INVOICES);
+      invoices = rawEM ? JSON.parse(rawEM) : [];
     } catch (e) { showToast('Could not load invoice data.'); return; }
     const inv = invoices[idx];
     if (!inv) { showToast('Invoice not found.'); return; }
+
+    const workerUrl = WORKER_URL;
+
     const modal = document.getElementById('emailModal');
     modal.classList.add('visible');
     document.body.style.overflow = 'hidden';
@@ -616,6 +659,7 @@ const App = (() => {
     document.getElementById('modalLoading').style.display  = 'flex';
     document.getElementById('modalResult').style.display   = 'none';
     document.getElementById('modalError').style.display    = 'none';
+
     const days = daysOverdue(inv.due);
     const tone = getTone(days);
     const dueDateFormatted = inv.due
@@ -646,13 +690,20 @@ const App = (() => {
       `Status: ${overdueContext}\n` +
       `Tone required: ${tone.label}`;
     try {
-      const response = await puter.ai.chat(
-        [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }],
-        { model: 'qwen/qwen3.5-27b' }
-      );
-      const rawText      = typeof response === 'string'
-        ? response
-        : (response?.message?.content || response?.toString() || '');
+      const res = await fetch(workerUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user',   content: userMessage }
+          ]
+        })
+      });
+      if (!res.ok) throw new Error(`Worker responded HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      const rawText      = data.content || '';
       const subjectMatch = rawText.match(/^SUBJECT:\s*(.+)/im);
       const subject      = subjectMatch ? subjectMatch[1].trim() : `Follow-up: Invoice ${inv.id}`;
       const body         = rawText.replace(/^SUBJECT:\s*.+\n?/im, '').trim();
@@ -669,7 +720,7 @@ const App = (() => {
       document.getElementById('modalLoading').style.display = 'none';
       document.getElementById('modalError').style.display   = 'flex';
       document.getElementById('modalErrorMsg').textContent  =
-        'AI drafting failed. Please check your connection and try again.';
+        `AI drafting failed: ${err.message}`;
     }
   }
 
@@ -711,8 +762,8 @@ const App = (() => {
   /* ══════════ LOAD INVOICE INTO EDITOR ══════════ */
   async function loadInvoiceToEditor(idx) {
     try {
-      let invoices = await puter.kv.get(KV_INVOICES) || [];
-      if (typeof invoices === 'string') invoices = JSON.parse(invoices);
+      const rawInv = await kvGet(KV_INVOICES);
+      let invoices = rawInv ? JSON.parse(rawInv) : [];
       const inv = invoices[idx];
       if (!inv) return;
       currentCurrency = inv.currency || '$';
@@ -742,10 +793,10 @@ const App = (() => {
   /* ══════════ DELETE INVOICE ══════════ */
   async function deleteInvoice(idx) {
     try {
-      let invoices = await puter.kv.get(KV_INVOICES) || [];
-      if (typeof invoices === 'string') invoices = JSON.parse(invoices);
+      const rawInv = await kvGet(KV_INVOICES);
+      let invoices = rawInv ? JSON.parse(rawInv) : [];
       invoices.splice(idx, 1);
-      await puter.kv.set(KV_INVOICES, invoices);
+      await kvSet(KV_INVOICES, JSON.stringify(invoices));
       showToast('Invoice deleted.');
       loadHistory();
     } catch (e) { showToast('Delete failed.'); }
@@ -754,9 +805,9 @@ const App = (() => {
   /* ══════════ SETTINGS: LOAD ══════════ */
   async function loadSettings() {
     try {
-      const saved = await puter.kv.get(KV_SETTINGS);
+      const saved = await kvGet(KV_SETTINGS);
       if (saved) {
-        settings = typeof saved === 'string' ? JSON.parse(saved) : saved;
+        settings = JSON.parse(saved);
         document.getElementById('settingBizName').value    = settings.bizName    || '';
         document.getElementById('settingBizAddress').value = settings.bizAddress || '';
         document.getElementById('settingPhone').value      = settings.phone      || '';
@@ -770,6 +821,16 @@ const App = (() => {
     } catch (_) {}
     const sel = document.getElementById('baseCurrencySelect');
     if (sel) sel.value = baseCurrency;
+    // Restore logo from localStorage
+    const logoB64 = localStorage.getItem(LS_LOGO_KEY);
+    if (logoB64) {
+      settings.logoUrl = logoB64;
+      const preview         = document.getElementById('settingsLogoPreview');
+      preview.src           = logoB64;
+      preview.style.display = 'block';
+      document.getElementById('logoPlaceholder').style.display = 'none';
+      applySettingsToInvoice();
+    }
   }
 
   /* ══════════ SETTINGS: SAVE ══════════ */
@@ -783,13 +844,15 @@ const App = (() => {
     settings.instagram  = document.getElementById('settingInstagram').value.trim();
     settings.twitter    = document.getElementById('settingTwitter').value.trim();
     settings.github     = document.getElementById('settingGithub').value.trim();
+
     try {
-      await puter.kv.set(KV_SETTINGS, settings);
+      await kvSet(KV_SETTINGS, JSON.stringify(settings));
       applySettingsToInvoice();
       statusEl.textContent = '✓ Settings saved';
       statusEl.className   = 'save-status ok';
       showToast('Settings saved!');
       setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'save-status'; }, 3000);
+      updateStatus('online', 'Ready');
     } catch (e) {
       statusEl.textContent = '✗ Failed to save';
       statusEl.className   = 'save-status err';
@@ -825,7 +888,7 @@ const App = (() => {
   }
 
   /* ══════════ LOGO UPLOAD ══════════ */
-  async function uploadLogo(input) {
+  function uploadLogo(input) {
     const file     = input.files[0];
     const statusEl = document.getElementById('logoUploadStatus');
     if (!file) return;
@@ -833,31 +896,42 @@ const App = (() => {
       statusEl.textContent = '✗ File too large (max 2MB)';
       statusEl.className   = 'upload-status err'; return;
     }
-    statusEl.innerHTML = '<span class="spinner"></span> Uploading…';
+    statusEl.innerHTML = '<span class="spinner"></span> Processing…';
     statusEl.className = 'upload-status';
-    try {
-      await puter.fs.write(FS_LOGO_PATH, file, { overwrite: true });
-      const url        = await puter.fs.getReadURL(FS_LOGO_PATH);
-      settings.logoUrl = url;
-      await puter.kv.set(KV_SETTINGS, settings);
-      const preview         = document.getElementById('settingsLogoPreview');
-      preview.src           = url;
-      preview.style.display = 'block';
-      document.getElementById('logoPlaceholder').style.display = 'none';
-      applySettingsToInvoice();
-      statusEl.textContent = '✓ Logo uploaded and saved';
-      statusEl.className   = 'upload-status ok';
-      showToast('Logo uploaded!');
-    } catch (e) {
-      statusEl.textContent = '✗ Upload failed — try again';
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl    = e.target.result;
+      settings.logoUrl = dataUrl;
+      localStorage.setItem(LS_LOGO_KEY, dataUrl);
+      kvSet(KV_SETTINGS, JSON.stringify(settings))
+        .then(() => {
+          const preview         = document.getElementById('settingsLogoPreview');
+          preview.src           = dataUrl;
+          preview.style.display = 'block';
+          document.getElementById('logoPlaceholder').style.display = 'none';
+          applySettingsToInvoice();
+          statusEl.textContent = '✓ Logo saved';
+          statusEl.className   = 'upload-status ok';
+          showToast('Logo uploaded!');
+        })
+        .catch(() => {
+          statusEl.textContent = '✗ Save failed — try again';
+          statusEl.className   = 'upload-status err';
+        });
+    };
+    reader.onerror = () => {
+      statusEl.textContent = '✗ Read failed — try again';
       statusEl.className   = 'upload-status err';
-    }
+    };
+    reader.readAsDataURL(file);
   }
 
   /* ══════════ STATUS BAR ══════════ */
   function updateStatus(state, text) {
-    document.getElementById('statusDot').className    = 'status-dot ' + state;
-    document.getElementById('statusText').textContent = text;
+    const dot = document.getElementById('statusDot');
+    if (dot) dot.className    = 'status-dot ' + state;
+    const txt = document.getElementById('statusText');
+    if (txt) txt.textContent = text;
   }
 
   /* ══════════ TOAST ══════════ */
@@ -888,6 +962,62 @@ const App = (() => {
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
+  /* ══════════ EXPORT / IMPORT ══════════ */
+  function exportInvoices() {
+    const raw = localStorage.getItem(KV_INVOICES);
+    const invoices = raw ? JSON.parse(raw) : [];
+    if (!invoices.length) { showToast('No invoices to export.'); return; }
+    const blob = new Blob(
+      [JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), invoices }, null, 2)],
+      { type: 'application/json' }
+    );
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `eliteinvoice-backup-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast(`${invoices.length} invoice${invoices.length > 1 ? 's' : ''} exported.`);
+  }
+
+  function importInvoices(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const parsed   = JSON.parse(e.target.result);
+        const incoming = parsed.invoices || (Array.isArray(parsed) ? parsed : null);
+        if (!incoming) throw new Error('Unrecognised file format.');
+        const raw         = localStorage.getItem(KV_INVOICES);
+        const existing    = raw ? JSON.parse(raw) : [];
+        const existingIds = new Set(existing.map(i => i.id));
+        const merged      = [...existing, ...incoming.filter(i => !existingIds.has(i.id))];
+        localStorage.setItem(KV_INVOICES, JSON.stringify(merged));
+        showToast(`${incoming.length} invoice${incoming.length > 1 ? 's' : ''} imported (${merged.length - existing.length} new).`);
+        loadHistory();
+      } catch (err) {
+        showToast('Import failed: ' + err.message);
+      }
+      input.value = '';
+    };
+    reader.readAsText(file);
+  }
+
+  /* ══════════ THEME ══════════ */
+  function toggleTheme() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const next   = isDark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('eliteinvoice_theme', next);
+  }
+
+  function initTheme() {
+    const saved = localStorage.getItem('eliteinvoice_theme') ||
+      (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', saved);
+  }
+
   /* ══════════ PUBLIC API ══════════ */
   return {
     init, navigate,
@@ -900,6 +1030,8 @@ const App = (() => {
     saveBaseCurrency,
     openEmailModal, closeEmailModal,
     copyEmailDraft, openInMailClient,
+    exportInvoices, importInvoices,
+    toggleTheme,
     calculateTotalRevenue
   };
 })();
