@@ -30,13 +30,26 @@ function kvDelete(key) {
 const LS_LOGO_KEY  = 'eliteinvoice_logo_b64';   // base64 data-URL stored in localStorage
 
 const CCY_META = {
-  '$':  { code: 'USD', symbol: '$'  },
-  '€':  { code: 'EUR', symbol: '€'  },
-  '£':  { code: 'GBP', symbol: '£'  },
-  '₱':  { code: 'PHP', symbol: '₱'  },
-  '¥':  { code: 'JPY', symbol: '¥'  },
-  'A$': { code: 'AUD', symbol: 'A$' },
-  'C$': { code: 'CAD', symbol: 'C$' },
+  '$':   { code: 'USD', symbol: '$'   },
+  '€':   { code: 'EUR', symbol: '€'   },
+  '£':   { code: 'GBP', symbol: '£'   },
+  '₱':   { code: 'PHP', symbol: '₱'   },
+  '¥':   { code: 'JPY', symbol: '¥'   },
+  'A$':  { code: 'AUD', symbol: 'A$'  },
+  'C$':  { code: 'CAD', symbol: 'C$'  },
+  'S$':  { code: 'SGD', symbol: 'S$'  },
+  'HK$': { code: 'HKD', symbol: 'HK$' },
+  'NZ$': { code: 'NZD', symbol: 'NZ$' },
+  '₩':   { code: 'KRW', symbol: '₩'   },
+  '₹':   { code: 'INR', symbol: '₹'   },
+  'R$':  { code: 'BRL', symbol: 'R$'  },
+  'Fr':  { code: 'CHF', symbol: 'Fr'  },
+  'kr':  { code: 'SEK', symbol: 'kr'  },
+  'Mex$':{ code: 'MXN', symbol: 'Mex$'},
+  'د.إ': { code: 'AED', symbol: 'د.إ' },
+  'SAR': { code: 'SAR', symbol: 'SAR' },
+  'zł':  { code: 'PLN', symbol: 'zł'  },
+  'Kč':  { code: 'CZK', symbol: 'Kč'  },
 };
 
 const CODE_TO_SYM = Object.fromEntries(
@@ -319,20 +332,36 @@ const App = (() => {
     const input = document.getElementById('magicInput').value.trim();
     if (!input) { showToast('Please enter invoice details first.'); return; }
 
-    const workerUrl = WORKER_URL;
     const btn = document.getElementById('magicBtn');
     btn.disabled = true;
     setMagicStatus('loading', 'Parsing with AI…');
 
+    const today = new Date().toISOString().slice(0, 10);
+
     const systemPrompt =
-      'You are an invoice data extractor. Extract items as a JSON array of ' +
-      '{desc, qty, price}. Also, identify the currency symbol used ' +
-      '(e.g., $, €, £, ₱). If no symbol is found, default to \'$\'. ' +
-      'Return ONLY valid JSON in this exact shape, no markdown, no extra text: ' +
-      '{"currency":"$","items":[{"desc":"...","qty":1,"price":0}]}';
+      'You are an invoice data extractor. Extract ALL possible invoice fields from the user text. ' +
+      'Today\'s date is ' + today + '. ' +
+      'Return ONLY valid JSON — no markdown, no extra text — in exactly this shape:\n' +
+      '{\n' +
+      '  "currency": "$",\n' +
+      '  "clientName": "",\n' +
+      '  "clientEmail": "",\n' +
+      '  "clientAddress": "",\n' +
+      '  "date": "",\n' +
+      '  "due": "",\n' +
+      '  "taxPct": null,\n' +
+      '  "notes": "",\n' +
+      '  "items": [{"desc": "", "qty": 1, "price": 0}]\n' +
+      '}\n' +
+      'Rules:\n' +
+      '- currency: symbol only e.g. $, €, £, ₱. Default to "$" if not mentioned.\n' +
+      '- date and due: YYYY-MM-DD format. Resolve relative dates like "today", "in 30 days", "end of month" using today\'s date. Leave "" if not mentioned.\n' +
+      '- taxPct: number only e.g. 10 for 10%. null if not mentioned.\n' +
+      '- clientName, clientEmail, clientAddress, notes: plain strings, "" if not found.\n' +
+      '- items: array of {desc, qty, price}. qty and price must be numbers.';
 
     try {
-      const res = await fetch(workerUrl, {
+      const res = await fetch(WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -343,7 +372,7 @@ const App = (() => {
         })
       });
       if (!res.ok) throw new Error(`Worker responded HTTP ${res.status}`);
-      const data    = await res.json();
+      const data = await res.json();
       if (data.error) throw new Error(data.error);
       const rawText = data.content || '';
 
@@ -352,6 +381,9 @@ const App = (() => {
       const jsonStr = jsonMatch ? jsonMatch[1].trim() : rawText.trim();
       const parsed  = JSON.parse(jsonStr);
 
+      let filledFields = 0;
+
+      // Currency
       if (parsed.currency) {
         currentCurrency = parsed.currency;
         const sel = document.getElementById('currencySelect');
@@ -359,13 +391,38 @@ const App = (() => {
           if (opt.value === parsed.currency) { sel.value = parsed.currency; break; }
         }
       }
+
+      // Client fields
+      if (parsed.clientName)    { document.getElementById('clientName').value    = parsed.clientName;    filledFields++; }
+      if (parsed.clientEmail)   { document.getElementById('clientEmail').value   = parsed.clientEmail;   filledFields++; }
+      if (parsed.clientAddress) { document.getElementById('clientAddress').value = parsed.clientAddress; filledFields++; }
+
+      // Dates
+      if (parsed.date) { document.getElementById('invoiceDate').value = parsed.date; filledFields++; }
+      if (parsed.due)  { document.getElementById('invoiceDue').value  = parsed.due;  filledFields++; }
+
+      // Tax
+      if (parsed.taxPct !== null && parsed.taxPct !== undefined && parsed.taxPct !== '') {
+        document.getElementById('taxRateInput').value = parsed.taxPct;
+        updateTotals();
+        filledFields++;
+      }
+
+      // Notes
+      if (parsed.notes) { document.getElementById('invoiceNotes').value = parsed.notes; filledFields++; }
+
+      // Line items
       if (Array.isArray(parsed.items) && parsed.items.length > 0) {
         document.getElementById('invoiceBody').innerHTML = '';
         parsed.items.forEach(item => addRow(item.desc, item.qty, item.price));
-        setMagicStatus('ok', `✓ ${parsed.items.length} item${parsed.items.length > 1 ? 's' : ''} extracted`);
-        showToast('Invoice items populated!');
+        const itemCount = parsed.items.length;
+        setMagicStatus('ok', `✓ ${itemCount} item${itemCount > 1 ? 's' : ''}${filledFields > 0 ? ' + ' + filledFields + ' field' + (filledFields > 1 ? 's' : '') + ' filled' : ''}`);
+        showToast('Invoice auto-filled!');
+      } else if (filledFields > 0) {
+        setMagicStatus('ok', `✓ ${filledFields} field${filledFields > 1 ? 's' : ''} filled`);
+        showToast('Invoice fields populated!');
       } else {
-        setMagicStatus('err', 'No items found. Try rephrasing.');
+        setMagicStatus('err', 'Nothing found. Try adding more detail.');
       }
     } catch (err) {
       console.error('AI parse error:', err);
@@ -416,6 +473,14 @@ const App = (() => {
 
   /* ══════════ SAVE INVOICE (new only) ══════════ */
   async function saveInvoice() {
+    const rows = document.querySelectorAll('#invoiceBody tr');
+    const hasItems = Array.from(rows).some(row => {
+      const inputs = row.querySelectorAll('input');
+      return inputs[0]?.value.trim() && parseFloat(inputs[2]?.value) > 0;
+    });
+    if (!hasItems) { showToast('Add at least one item with a description and price before saving.'); return; }
+    const clientName = document.getElementById('clientName').value.trim();
+    if (!clientName) { showToast('Please enter a client name before saving.'); return; }
     const invoice = _buildInvoiceFromForm(null);
     try {
       const raw = await kvGet(KV_INVOICES);
@@ -455,15 +520,11 @@ const App = (() => {
       await kvSet(KV_INVOICES, JSON.stringify(invoices));
 
       showToast('Invoice updated successfully!');
-      // Stay in edit mode — Save Invoice must not appear for an existing invoice
       const btnUpdate = document.getElementById('btnUpdateInvoice');
       const origText  = btnUpdate.innerHTML;
       btnUpdate.innerHTML = '✓ Saved';
       btnUpdate.disabled  = true;
-      setTimeout(() => {
-        btnUpdate.innerHTML = origText;
-        btnUpdate.disabled  = false;
-      }, 2000);
+      setTimeout(() => { btnUpdate.innerHTML = origText; btnUpdate.disabled = false; }, 2000);
     } catch (e) {
       console.error('Update error:', e);
       showToast('Update failed. Please try again.');
@@ -792,14 +853,37 @@ const App = (() => {
 
   /* ══════════ DELETE INVOICE ══════════ */
   async function deleteInvoice(idx) {
-    try {
-      const rawInv = await kvGet(KV_INVOICES);
-      let invoices = rawInv ? JSON.parse(rawInv) : [];
-      invoices.splice(idx, 1);
-      await kvSet(KV_INVOICES, JSON.stringify(invoices));
-      showToast('Invoice deleted.');
-      loadHistory();
-    } catch (e) { showToast('Delete failed.'); }
+    const rawInv = localStorage.getItem(KV_INVOICES);
+    const invoices = rawInv ? JSON.parse(rawInv) : [];
+    const inv = invoices[idx];
+    const label = inv ? `${inv.id}${inv.clientName ? ' — ' + inv.clientName : ''}` : 'this invoice';
+    showConfirm(`Delete ${label}?`, 'This cannot be undone.', async () => {
+      try {
+        const raw2 = localStorage.getItem(KV_INVOICES);
+        let list = raw2 ? JSON.parse(raw2) : [];
+        list.splice(idx, 1);
+        await kvSet(KV_INVOICES, JSON.stringify(list));
+        showToast('Invoice deleted.');
+        loadHistory();
+      } catch (e) { showToast('Delete failed.'); }
+    });
+  }
+
+  function showConfirm(title, subtitle, onConfirm) {
+    document.getElementById('confirmTitle').textContent    = title;
+    document.getElementById('confirmSubtitle').textContent = subtitle;
+    document.getElementById('confirmDialog').classList.add('visible');
+    document.body.style.overflow = 'hidden';
+    const btnOk  = document.getElementById('confirmOk');
+    const btnCan = document.getElementById('confirmCancel');
+    const cleanup = () => {
+      document.getElementById('confirmDialog').classList.remove('visible');
+      document.body.style.overflow = '';
+      btnOk.replaceWith(btnOk.cloneNode(true));
+      btnCan.replaceWith(btnCan.cloneNode(true));
+    };
+    document.getElementById('confirmOk').addEventListener('click', () => { cleanup(); onConfirm(); });
+    document.getElementById('confirmCancel').addEventListener('click', cleanup);
   }
 
   /* ══════════ SETTINGS: LOAD ══════════ */
@@ -962,60 +1046,47 @@ const App = (() => {
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  /* ══════════ EXPORT / IMPORT ══════════ */
-  function exportInvoices() {
-    const raw = localStorage.getItem(KV_INVOICES);
-    const invoices = raw ? JSON.parse(raw) : [];
-    if (!invoices.length) { showToast('No invoices to export.'); return; }
-    const blob = new Blob(
-      [JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), invoices }, null, 2)],
-      { type: 'application/json' }
-    );
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = `eliteinvoice-backup-${new Date().toISOString().slice(0,10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast(`${invoices.length} invoice${invoices.length > 1 ? 's' : ''} exported.`);
-  }
-
-  function importInvoices(input) {
-    const file = input.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const parsed   = JSON.parse(e.target.result);
-        const incoming = parsed.invoices || (Array.isArray(parsed) ? parsed : null);
-        if (!incoming) throw new Error('Unrecognised file format.');
-        const raw         = localStorage.getItem(KV_INVOICES);
-        const existing    = raw ? JSON.parse(raw) : [];
-        const existingIds = new Set(existing.map(i => i.id));
-        const merged      = [...existing, ...incoming.filter(i => !existingIds.has(i.id))];
-        localStorage.setItem(KV_INVOICES, JSON.stringify(merged));
-        showToast(`${incoming.length} invoice${incoming.length > 1 ? 's' : ''} imported (${merged.length - existing.length} new).`);
-        loadHistory();
-      } catch (err) {
-        showToast('Import failed: ' + err.message);
-      }
-      input.value = '';
-    };
-    reader.readAsText(file);
-  }
-
-  /* ══════════ THEME ══════════ */
   function toggleTheme() {
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    const next   = isDark ? 'light' : 'dark';
+    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', next);
     localStorage.setItem('eliteinvoice_theme', next);
   }
-
   function initTheme() {
     const saved = localStorage.getItem('eliteinvoice_theme') ||
       (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     document.documentElement.setAttribute('data-theme', saved);
+  }
+
+  function exportInvoices() {
+    const raw = localStorage.getItem(KV_INVOICES);
+    const invoices = raw ? JSON.parse(raw) : [];
+    if (!invoices.length) { showToast('No invoices to export.'); return; }
+    const blob = new Blob([JSON.stringify({ version:1, exportedAt: new Date().toISOString(), invoices }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `eliteinvoice-backup-${new Date().toISOString().slice(0,10)}.json`; a.click();
+    URL.revokeObjectURL(url);
+    showToast(`${invoices.length} invoice${invoices.length>1?'s':''} exported.`);
+  }
+  function importInvoices(input) {
+    const file = input.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const parsed = JSON.parse(e.target.result);
+        const incoming = parsed.invoices || (Array.isArray(parsed) ? parsed : null);
+        if (!incoming) throw new Error('Unrecognised file format.');
+        const raw = localStorage.getItem(KV_INVOICES);
+        const existing = raw ? JSON.parse(raw) : [];
+        const ids = new Set(existing.map(i => i.id));
+        const merged = [...existing, ...incoming.filter(i => !ids.has(i.id))];
+        localStorage.setItem(KV_INVOICES, JSON.stringify(merged));
+        showToast(`${incoming.length} invoice${incoming.length>1?'s':''} imported (${merged.length-existing.length} new).`);
+        loadHistory();
+      } catch (err) { showToast('Import failed: ' + err.message); }
+      input.value = '';
+    };
+    reader.readAsText(file);
   }
 
   /* ══════════ PUBLIC API ══════════ */
@@ -1025,7 +1096,7 @@ const App = (() => {
     addRow, deleteRow, updateTotals,
     setCurrency, newInvoice, cancelEdit, runMagicParse,
     saveInvoice, updateInvoice, clearInvoice, loadHistory,
-    loadInvoiceToEditor, deleteInvoice,
+    loadInvoiceToEditor, deleteInvoice, showConfirm,
     saveSettings, uploadLogo,
     saveBaseCurrency,
     openEmailModal, closeEmailModal,
@@ -1039,3 +1110,20 @@ const App = (() => {
 document.addEventListener('DOMContentLoaded', () => {
   App.init().catch(err => console.warn('EliteInvoice init error:', err));
 });
+
+/* ══════════════════════════════════════════════════
+   FAQ ACCORDION (global helper)
+══════════════════════════════════════════════════ */
+function toggleFaq(btn) {
+  const item   = btn.closest('.faq-item');
+  const answer = item.querySelector('.faq-answer');
+  const isOpen = answer.classList.contains('open');
+  // Close all
+  document.querySelectorAll('.faq-answer.open').forEach(a => a.classList.remove('open'));
+  document.querySelectorAll('.faq-question.open').forEach(b => b.classList.remove('open'));
+  // Toggle current
+  if (!isOpen) {
+    answer.classList.add('open');
+    btn.classList.add('open');
+  }
+}
