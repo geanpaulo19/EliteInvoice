@@ -9,11 +9,11 @@
 const DEFAULT_TAX_RATE = 10;
 const DEFAULT_BASE_CCY = 'USD';
 
-const KV_SETTINGS  = 'eliteinvoice_settings';
-const KV_INVOICES  = 'eliteinvoice_invoices';
-const KV_COUNTER   = 'eliteinvoice_counter';
-const KV_BASE_CCY  = 'eliteinvoice_base_currency';
-const WORKER_URL   = 'https://api.geanpaulofrancois.workers.dev/';
+const KV_SETTINGS = 'eliteinvoice_settings';
+const KV_INVOICES = 'eliteinvoice_invoices';
+const KV_COUNTER = 'eliteinvoice_counter';
+const KV_BASE_CCY = 'eliteinvoice_base_currency';
+const WORKER_URL = 'https://api.geanpaulofrancois.workers.dev/';
 
 /* ── localStorage helpers ── */
 function kvGet(key) {
@@ -27,31 +27,31 @@ function kvDelete(key) {
   localStorage.removeItem(key);
   return Promise.resolve();
 }
-const LS_LOGO_KEY  = 'eliteinvoice_logo_b64';   // base64 data-URL stored in localStorage
-const KV_TEMPLATE  = 'eliteinvoice_template';
-const KV_SEEN      = 'eliteinvoice_seen';
+const LS_LOGO_KEY = 'eliteinvoice_logo_b64';   // base64 data-URL stored in localStorage
+const KV_TEMPLATE = 'eliteinvoice_template';
+const KV_SEEN = 'eliteinvoice_seen';
 
 const CCY_META = {
-  '$':   { code: 'USD', symbol: '$'   },
-  '€':   { code: 'EUR', symbol: '€'   },
-  '£':   { code: 'GBP', symbol: '£'   },
-  '₱':   { code: 'PHP', symbol: '₱'   },
-  '¥':   { code: 'JPY', symbol: '¥'   },
-  'A$':  { code: 'AUD', symbol: 'A$'  },
-  'C$':  { code: 'CAD', symbol: 'C$'  },
-  'S$':  { code: 'SGD', symbol: 'S$'  },
+  '$': { code: 'USD', symbol: '$' },
+  '€': { code: 'EUR', symbol: '€' },
+  '£': { code: 'GBP', symbol: '£' },
+  '₱': { code: 'PHP', symbol: '₱' },
+  '¥': { code: 'JPY', symbol: '¥' },
+  'A$': { code: 'AUD', symbol: 'A$' },
+  'C$': { code: 'CAD', symbol: 'C$' },
+  'S$': { code: 'SGD', symbol: 'S$' },
   'HK$': { code: 'HKD', symbol: 'HK$' },
   'NZ$': { code: 'NZD', symbol: 'NZ$' },
-  '₩':   { code: 'KRW', symbol: '₩'   },
-  '₹':   { code: 'INR', symbol: '₹'   },
-  'R$':  { code: 'BRL', symbol: 'R$'  },
-  'Fr':  { code: 'CHF', symbol: 'Fr'  },
-  'kr':  { code: 'SEK', symbol: 'kr'  },
-  'Mex$':{ code: 'MXN', symbol: 'Mex$'},
+  '₩': { code: 'KRW', symbol: '₩' },
+  '₹': { code: 'INR', symbol: '₹' },
+  'R$': { code: 'BRL', symbol: 'R$' },
+  'Fr': { code: 'CHF', symbol: 'Fr' },
+  'kr': { code: 'SEK', symbol: 'kr' },
+  'Mex$': { code: 'MXN', symbol: 'Mex$' },
   'د.إ': { code: 'AED', symbol: 'د.إ' },
   'SAR': { code: 'SAR', symbol: 'SAR' },
-  'zł':  { code: 'PLN', symbol: 'zł'  },
-  'Kč':  { code: 'CZK', symbol: 'Kč'  },
+  'zł': { code: 'PLN', symbol: 'zł' },
+  'Kč': { code: 'CZK', symbol: 'Kč' },
 };
 
 const CODE_TO_SYM = Object.fromEntries(
@@ -60,10 +60,10 @@ const CODE_TO_SYM = Object.fromEntries(
 
 const App = (() => {
 
-  let currentCurrency  = '$';
-  let baseCurrency     = DEFAULT_BASE_CCY;
-  let fxRates          = {};
-  let fxRatesOk        = false;
+  let currentCurrency = '$';
+  let baseCurrency = DEFAULT_BASE_CCY;
+  let fxRates = {};
+  let fxRatesOk = false;
 
   /*
    * _editingIndex — tracks which invoice is currently loaded
@@ -71,7 +71,9 @@ const App = (() => {
    * number = index into the saved invoices array; the Update
    * button is shown and Save Invoice is hidden in this state.
    */
-  let _editingIndex = null;
+  let _editingIndex  = null;
+  let _historyFilter = 'all';
+  let _historySearch = '';
 
   let settings = {
     bizName: '', bizAddress: '',
@@ -89,9 +91,9 @@ const App = (() => {
     initTemplate();
     // Set up dates and defaults immediately — never blocked by network
     const today = new Date();
-    document.getElementById('invoiceDate').value  = fmtDate(today);
+    document.getElementById('invoiceDate').value = fmtDate(today);
     const due = new Date(today); due.setDate(due.getDate() + 30);
-    document.getElementById('invoiceDue').value   = fmtDate(due);
+    document.getElementById('invoiceDue').value = fmtDate(due);
     document.getElementById('taxRateInput').value = DEFAULT_TAX_RATE;
     addRow();
 
@@ -119,9 +121,9 @@ const App = (() => {
     _editingIndex = index;
     const isEditing = index !== null;
 
-    document.getElementById('btnSaveInvoice').style.display   = isEditing ? 'none'  : '';
-    document.getElementById('btnUpdateInvoice').style.display = isEditing ? ''      : 'none';
-    document.getElementById('btnCancelEdit').style.display    = isEditing ? ''      : 'none';
+    document.getElementById('btnSaveInvoice').style.display = isEditing ? 'none' : '';
+    document.getElementById('btnUpdateInvoice').style.display = isEditing ? '' : 'none';
+    document.getElementById('btnCancelEdit').style.display = isEditing ? '' : 'none';
 
     // Visual cue on the invoice document itself
     const doc = document.getElementById('invoiceDocument');
@@ -137,7 +139,7 @@ const App = (() => {
     try {
       const saved = await kvGet(KV_BASE_CCY);
       if (saved) baseCurrency = saved;
-    } catch (_) {}
+    } catch (_) { }
     const sel = document.getElementById('baseCurrencySelect');
     if (sel) sel.value = baseCurrency;
   }
@@ -154,7 +156,7 @@ const App = (() => {
 
   /* ══════════ LIVE FX RATES ══════════ */
   async function _fetchFrankfurter() {
-    const res  = await fetch(`https://api.frankfurter.app/latest?from=${baseCurrency}`);
+    const res = await fetch(`https://api.frankfurter.app/latest?from=${baseCurrency}`);
     if (!res.ok) throw new Error(`Frankfurter HTTP ${res.status}`);
     const data = await res.json();
     if (!data.rates || typeof data.rates !== 'object')
@@ -163,7 +165,7 @@ const App = (() => {
   }
 
   async function _fetchOpenER() {
-    const res  = await fetch(`https://open.er-api.com/v6/latest/${baseCurrency}`);
+    const res = await fetch(`https://open.er-api.com/v6/latest/${baseCurrency}`);
     if (!res.ok) throw new Error(`OpenER HTTP ${res.status}`);
     const data = await res.json();
     if (data.result !== 'success' || !data.rates)
@@ -174,7 +176,7 @@ const App = (() => {
   async function fetchFxRates() {
     fxRatesOk = false;
     try {
-      fxRates   = await _fetchFrankfurter();
+      fxRates = await _fetchFrankfurter();
       fxRatesOk = true;
       console.info('FX: Frankfurter OK');
       return true;
@@ -182,14 +184,14 @@ const App = (() => {
       console.warn('Frankfurter failed, trying fallback…', e.message);
     }
     try {
-      fxRates   = await _fetchOpenER();
+      fxRates = await _fetchOpenER();
       fxRatesOk = true;
       console.info('FX: open.er-api fallback OK');
       return true;
     } catch (e) {
       console.warn('Both FX sources failed.', e.message);
     }
-    fxRates   = {};
+    fxRates = {};
     fxRatesOk = false;
     return false;
   }
@@ -228,12 +230,14 @@ const App = (() => {
 
   /* ══════════ SIDEBAR ══════════ */
   function toggleSidebar() {
-    const sidebar   = document.getElementById('sidebar');
-    const overlay   = document.getElementById('sidebarOverlay');
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
     const hamburger = document.getElementById('hamburgerBtn');
-    const isOpen    = sidebar.classList.toggle('is-open');
+    const brandPill = document.getElementById('mobileBrandPill');
+    const isOpen = sidebar.classList.toggle('is-open');
     hamburger.classList.toggle('is-open', isOpen);
     overlay.classList.toggle('visible', isOpen);
+    if (brandPill) brandPill.classList.toggle('sidebar-blurred', isOpen);
     document.body.style.overflow = isOpen ? 'hidden' : '';
   }
 
@@ -241,6 +245,8 @@ const App = (() => {
     document.getElementById('sidebar').classList.remove('is-open');
     document.getElementById('hamburgerBtn').classList.remove('is-open');
     document.getElementById('sidebarOverlay').classList.remove('visible');
+    const brandPill = document.getElementById('mobileBrandPill');
+    if (brandPill) brandPill.classList.remove('sidebar-blurred');
     document.body.style.overflow = '';
   }
 
@@ -259,7 +265,7 @@ const App = (() => {
   /* ══════════ ROW MANAGEMENT ══════════ */
   function addRow(desc = '', qty = 1, price = '') {
     const tbody = document.getElementById('invoiceBody');
-    const tr    = document.createElement('tr');
+    const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><input type="text" placeholder="Item description" value="${escHtml(desc)}" oninput="App.updateTotals()" /></td>
       <td class="td-qty"><input type="number" value="${qty}" min="0" step="any" oninput="App.updateTotals()" /></td>
@@ -280,22 +286,22 @@ const App = (() => {
   /* ══════════ TOTALS ══════════ */
   function updateTotals() {
     const rows = document.querySelectorAll('#invoiceBody tr');
-    const sym  = currentCurrency;
+    const sym = currentCurrency;
     let subtotal = 0;
     rows.forEach(row => {
       const inputs = row.querySelectorAll('input');
-      const qty    = parseFloat(inputs[1].value) || 0;
-      const price  = parseFloat(inputs[2].value) || 0;
-      const line   = qty * price;
-      subtotal    += line;
+      const qty = parseFloat(inputs[1].value) || 0;
+      const price = parseFloat(inputs[2].value) || 0;
+      const line = qty * price;
+      subtotal += line;
       row.querySelector('.td-total').textContent = line ? sym + fmt(line) : '—';
     });
     const taxPct = parseFloat(document.getElementById('taxRateInput').value) || 0;
-    const tax    = subtotal * (taxPct / 100);
-    const total  = subtotal + tax;
+    const tax = subtotal * (taxPct / 100);
+    const total = subtotal + tax;
     document.getElementById('subtotalVal').textContent = sym + fmt(subtotal);
-    document.getElementById('taxVal').textContent      = sym + fmt(tax);
-    document.getElementById('totalVal').textContent    = sym + fmt(total);
+    document.getElementById('taxVal').textContent = sym + fmt(tax);
+    document.getElementById('totalVal').textContent = sym + fmt(total);
   }
 
   /* ══════════ CURRENCY ══════════ */
@@ -305,29 +311,29 @@ const App = (() => {
   }
 
   /* ══════════ NEW INVOICE ══════════ */
-  async function newInvoice() {
+  async function newInvoice(silent = false) {
     setEditMode(null);   // always exit edit mode on New
-    document.getElementById('invoiceBody').innerHTML   = '';
-    document.getElementById('clientName').value        = '';
-    document.getElementById('clientEmail').value       = '';
-    document.getElementById('clientAddress').value     = '';
-    document.getElementById('invoiceNotes').value      = '';
-    document.getElementById('magicInput').value        = '';
+    document.getElementById('invoiceBody').innerHTML = '';
+    document.getElementById('clientName').value = '';
+    document.getElementById('clientEmail').value = '';
+    document.getElementById('clientAddress').value = '';
+    document.getElementById('invoiceNotes').value = '';
+    document.getElementById('magicInput').value = '';
     document.getElementById('magicStatus').textContent = '';
-    document.getElementById('taxRateInput').value      = DEFAULT_TAX_RATE;
+    document.getElementById('taxRateInput').value = DEFAULT_TAX_RATE;
     const today = new Date();
     document.getElementById('invoiceDate').value = fmtDate(today);
     const due = new Date(today); due.setDate(due.getDate() + 30);
     document.getElementById('invoiceDue').value = fmtDate(due);
     await resolveInvoiceNumber();
     addRow();
-    showToast('Ready for a new invoice.');
+    if (!silent) showToast('Ready for a new invoice.');
   }
 
   /* ══════════ CANCEL EDIT ══════════ */
   function cancelEdit() {
     setEditMode(null);
-    newInvoice();
+    newInvoice(true);  // silent=true — we show our own toast below
     showToast('Edit cancelled — form reset.');
   }
 
@@ -371,7 +377,7 @@ const App = (() => {
         body: JSON.stringify({
           messages: [
             { role: 'system', content: systemPrompt },
-            { role: 'user',   content: input }
+            { role: 'user', content: input }
           ]
         })
       });
@@ -381,9 +387,9 @@ const App = (() => {
       const rawText = data.content || '';
 
       const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/) ||
-                        rawText.match(/(\{[\s\S]*\})/);
+        rawText.match(/(\{[\s\S]*\})/);
       const jsonStr = jsonMatch ? jsonMatch[1].trim() : rawText.trim();
-      const parsed  = JSON.parse(jsonStr);
+      const parsed = JSON.parse(jsonStr);
 
       let filledFields = 0;
 
@@ -397,13 +403,13 @@ const App = (() => {
       }
 
       // Client fields
-      if (parsed.clientName)    { document.getElementById('clientName').value    = parsed.clientName;    filledFields++; }
-      if (parsed.clientEmail)   { document.getElementById('clientEmail').value   = parsed.clientEmail;   filledFields++; }
+      if (parsed.clientName) { document.getElementById('clientName').value = parsed.clientName; filledFields++; }
+      if (parsed.clientEmail) { document.getElementById('clientEmail').value = parsed.clientEmail; filledFields++; }
       if (parsed.clientAddress) { document.getElementById('clientAddress').value = parsed.clientAddress; filledFields++; }
 
       // Dates
       if (parsed.date) { document.getElementById('invoiceDate').value = parsed.date; filledFields++; }
-      if (parsed.due)  { document.getElementById('invoiceDue').value  = parsed.due;  filledFields++; }
+      if (parsed.due) { document.getElementById('invoiceDue').value = parsed.due; filledFields++; }
 
       // Tax
       if (parsed.taxPct !== null && parsed.taxPct !== undefined && parsed.taxPct !== '') {
@@ -437,41 +443,41 @@ const App = (() => {
   }
 
   function setMagicStatus(type, msg) {
-    const el       = document.getElementById('magicStatus');
-    el.innerHTML   = type === 'loading' ? `<span class="spinner"></span> ${msg}` : msg;
-    el.style.color = type === 'ok'  ? 'var(--success)'
-                   : type === 'err' ? 'var(--danger)'
-                   : 'var(--text-secondary)';
+    const el = document.getElementById('magicStatus');
+    el.innerHTML = type === 'loading' ? `<span class="spinner"></span> ${msg}` : msg;
+    el.style.color = type === 'ok' ? 'var(--success)'
+      : type === 'err' ? 'var(--danger)'
+        : 'var(--text-secondary)';
   }
 
   /* ══════════ BUILD INVOICE OBJECT FROM FORM ══════════ */
   function _buildInvoiceFromForm(existingSavedAt) {
-    const rows  = document.querySelectorAll('#invoiceBody tr');
+    const rows = document.querySelectorAll('#invoiceBody tr');
     const items = [];
     rows.forEach(row => {
       const inputs = row.querySelectorAll('input');
       items.push({
-        desc:  inputs[0].value,
-        qty:   parseFloat(inputs[1].value) || 0,
+        desc: inputs[0].value,
+        qty: parseFloat(inputs[1].value) || 0,
         price: parseFloat(inputs[2].value) || 0
       });
     });
-    const taxPct   = parseFloat(document.getElementById('taxRateInput').value) || 0;
+    const taxPct = parseFloat(document.getElementById('taxRateInput').value) || 0;
     const subtotal = items.reduce((s, i) => s + i.qty * i.price, 0);
-    const tax      = subtotal * (taxPct / 100);
-    const total    = subtotal + tax;
+    const tax = subtotal * (taxPct / 100);
+    const total = subtotal + tax;
     return {
-      id:          document.getElementById('invoiceNumber').value.trim(),
-      date:        document.getElementById('invoiceDate').value,
-      due:         document.getElementById('invoiceDue').value,
-      clientName:  document.getElementById('clientName').value,
+      id: document.getElementById('invoiceNumber').value.trim(),
+      date: document.getElementById('invoiceDate').value,
+      due: document.getElementById('invoiceDue').value,
+      clientName: document.getElementById('clientName').value,
       clientEmail: document.getElementById('clientEmail').value,
-      clientAddr:  document.getElementById('clientAddress').value,
-      notes:       document.getElementById('invoiceNotes').value,
-      currency:    currentCurrency,
+      clientAddr: document.getElementById('clientAddress').value,
+      notes: document.getElementById('invoiceNotes').value,
+      currency: currentCurrency,
       taxPct, items, subtotal, tax, total,
-      savedAt:     existingSavedAt || new Date().toISOString(),
-      updatedAt:   new Date().toISOString()
+      savedAt: existingSavedAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
   }
 
@@ -561,7 +567,7 @@ const App = (() => {
     const cleanup = () => {
       dialog.classList.remove('visible');
       document.body.style.overflow = '';
-      ['similarCancel','similarViewBtn','similarSaveAnyway'].forEach(id => {
+      ['similarCancel', 'similarViewBtn', 'similarSaveAnyway'].forEach(id => {
         const el = document.getElementById(id);
         el.replaceWith(el.cloneNode(true));
       });
@@ -570,10 +576,15 @@ const App = (() => {
     document.getElementById('similarCancel').addEventListener('click', cleanup);
 
     document.getElementById('similarViewBtn').addEventListener('click', () => {
+      const targetId = matches[0].inv.id;
       cleanup();
-      // Navigate to history and load the closest match
       navigate('history');
-      setTimeout(() => loadInvoiceToEditor(matches[0].idx), 300);
+      setTimeout(async () => {
+        const raw = await kvGet(KV_INVOICES);
+        const list = raw ? JSON.parse(raw) : [];
+        const freshIdx = list.findIndex(i => i.id === targetId);
+        if (freshIdx !== -1) loadInvoiceToEditor(freshIdx);
+      }, 300);
     });
 
     document.getElementById('similarSaveAnyway').addEventListener('click', async () => {
@@ -614,16 +625,16 @@ const App = (() => {
       }
 
       const originalSavedAt = invoices[_editingIndex].savedAt;
-      const updated          = _buildInvoiceFromForm(originalSavedAt);
+      const updated = _buildInvoiceFromForm(originalSavedAt);
 
       invoices[_editingIndex] = updated;
       await kvSet(KV_INVOICES, JSON.stringify(invoices));
 
       showToast('Invoice updated successfully!');
       const btnUpdate = document.getElementById('btnUpdateInvoice');
-      const origText  = btnUpdate.innerHTML;
+      const origText = btnUpdate.innerHTML;
       btnUpdate.innerHTML = '✓ Saved';
-      btnUpdate.disabled  = true;
+      btnUpdate.disabled = true;
       setTimeout(() => { btnUpdate.innerHTML = origText; btnUpdate.disabled = false; }, 2000);
     } catch (e) {
       console.error('Update error:', e);
@@ -633,14 +644,14 @@ const App = (() => {
 
   /* ══════════ CLEAR INVOICE ══════════ */
   function clearInvoice() {
-    document.getElementById('invoiceBody').innerHTML   = '';
-    document.getElementById('clientName').value        = '';
-    document.getElementById('clientEmail').value       = '';
-    document.getElementById('clientAddress').value     = '';
-    document.getElementById('invoiceNotes').value      = '';
-    document.getElementById('magicInput').value        = '';
+    document.getElementById('invoiceBody').innerHTML = '';
+    document.getElementById('clientName').value = '';
+    document.getElementById('clientEmail').value = '';
+    document.getElementById('clientAddress').value = '';
+    document.getElementById('invoiceNotes').value = '';
+    document.getElementById('magicInput').value = '';
     document.getElementById('magicStatus').textContent = '';
-    document.getElementById('taxRateInput').value      = DEFAULT_TAX_RATE;
+    document.getElementById('taxRateInput').value = DEFAULT_TAX_RATE;
     addRow();
     showToast('Invoice cleared.');
   }
@@ -648,7 +659,7 @@ const App = (() => {
   /* ══════════ OVERDUE HELPERS ══════════ */
   function daysOverdue(dueDateStr) {
     if (!dueDateStr) return null;
-    const due   = new Date(dueDateStr);
+    const due = new Date(dueDateStr);
     const today = new Date();
     due.setHours(0, 0, 0, 0);
     today.setHours(0, 0, 0, 0);
@@ -656,19 +667,19 @@ const App = (() => {
   }
 
   function getTone(days) {
-    if (days === null || days < 0) return { key: 'upcoming', label: 'Gentle Heads-up',  emoji: '📅' };
-    if (days <= 7)                 return { key: 'friendly', label: 'Friendly Reminder', emoji: '🔔' };
-    if (days <= 13)                return { key: 'gentle',   label: 'Friendly Reminder', emoji: '🔔' };
-    return                                { key: 'firm',     label: 'Firm Follow-up',    emoji: '⚠️' };
+    if (days === null || days < 0) return { key: 'upcoming', label: 'Gentle Heads-up', emoji: '📅' };
+    if (days <= 7) return { key: 'friendly', label: 'Friendly Reminder', emoji: '🔔' };
+    if (days <= 13) return { key: 'gentle', label: 'Gentle Follow-up', emoji: '🔔' };
+    return { key: 'firm', label: 'Firm Follow-up', emoji: '⚠️' };
   }
 
   /* ══════════ REVENUE DASHBOARD ══════════ */
   async function calculateTotalRevenue(invoices) {
-    let grandTotal   = 0;
+    let grandTotal = 0;
     let overdueCount = 0;
     const byCurrency = {};
     invoices.forEach(inv => {
-      const sym   = inv.currency || '$';
+      const sym = inv.currency || '$';
       const total = parseFloat(inv.total) || 0;
       grandTotal += convertToBase(total, sym);
       byCurrency[sym] = (byCurrency[sym] || 0) + total;
@@ -676,45 +687,45 @@ const App = (() => {
       if (days !== null && days > 0) overdueCount++;
     });
     const count = invoices.length;
-    const avg   = count > 0 ? grandTotal / count : 0;
+    const avg = count > 0 ? grandTotal / count : 0;
     return { grandTotal, byCurrency, count, overdueCount, avg };
   }
 
   function renderRevenueDashboard(stats) {
     const { grandTotal, byCurrency, count, overdueCount, avg } = stats;
     const amountEl = document.getElementById('revenueTotalAmount');
-    const labelEl  = document.getElementById('revenueBaseCcyLabel');
+    const labelEl = document.getElementById('revenueBaseCcyLabel');
     amountEl.classList.add('updating');
     setTimeout(() => {
       if (fxRatesOk) {
         labelEl.textContent = `Converted to ${baseCurrency} · live rates`;
         labelEl.style.color = 'rgba(255,255,255,0.38)';
-        labelEl.title       = '';
+        labelEl.title = '';
       } else {
         labelEl.textContent = '⚠️ Live rates unavailable — amounts shown in original currencies';
         labelEl.style.color = '#ffcc00';
-        labelEl.title       = 'Both Frankfurter and open.er-api.com could not be reached.';
+        labelEl.title = 'Both Frankfurter and open.er-api.com could not be reached.';
       }
       if (count === 0) {
         amountEl.textContent = '—';
-        document.getElementById('revenueMultiCurrency').innerHTML  = '';
+        document.getElementById('revenueMultiCurrency').innerHTML = '';
         document.getElementById('revenueInvoiceCount').textContent = '0';
-        document.getElementById('revenueAvgValue').textContent     = '—';
+        document.getElementById('revenueAvgValue').textContent = '—';
         const ov = document.getElementById('revenueOverdueCount');
         ov.textContent = '0';
-        ov.className   = 'revenue-stat-value no-overdue';
+        ov.className = 'revenue-stat-value no-overdue';
         amountEl.classList.remove('updating');
         return;
       }
       amountEl.textContent = fmtBase(grandTotal);
       amountEl.classList.remove('updating');
       const chipContainer = document.getElementById('revenueMultiCurrency');
-      const currencies    = Object.keys(byCurrency);
+      const currencies = Object.keys(byCurrency);
       if (currencies.length > 1 ||
-          (currencies.length === 1 && CCY_META[currencies[0]]?.code !== baseCurrency)) {
+        (currencies.length === 1 && CCY_META[currencies[0]]?.code !== baseCurrency)) {
         chipContainer.innerHTML = currencies.map(sym => {
           const converted = convertToBase(byCurrency[sym], sym);
-          const isSame    = CCY_META[sym]?.code === baseCurrency;
+          const isSame = CCY_META[sym]?.code === baseCurrency;
           return `<span class="rev-currency-chip" title="${escHtml(sym)}${fmt(byCurrency[sym])}">
             ${escHtml(sym)}${fmt(byCurrency[sym])}
             ${!isSame && fxRatesOk
@@ -726,79 +737,150 @@ const App = (() => {
         chipContainer.innerHTML = '';
       }
       document.getElementById('revenueInvoiceCount').textContent = count;
-      document.getElementById('revenueAvgValue').textContent     = fmtBase(avg);
-      const overdueEl       = document.getElementById('revenueOverdueCount');
+      document.getElementById('revenueAvgValue').textContent = fmtBase(avg);
+      const overdueEl = document.getElementById('revenueOverdueCount');
       overdueEl.textContent = overdueCount;
-      overdueEl.className   = overdueCount === 0
+      overdueEl.className = overdueCount === 0
         ? 'revenue-stat-value no-overdue'
         : 'revenue-stat-value';
     }, 150);
   }
 
   /* ══════════ LOAD HISTORY ══════════ */
+  // Cached invoices for client-side search/filter
+  let _allInvoices = [];
+
   async function loadHistory() {
     const container = document.getElementById('historyList');
     container.innerHTML = '<div class="empty-state"><span class="spinner"></span></div>';
     try {
       const rawInv = await kvGet(KV_INVOICES);
-      let invoices = rawInv ? JSON.parse(rawInv) : [];
+      _allInvoices = rawInv ? JSON.parse(rawInv) : [];
       if (!fxRatesOk) await fetchFxRates();
-      const stats = await calculateTotalRevenue(invoices);
+      const stats = await calculateTotalRevenue(_allInvoices);
       renderRevenueDashboard(stats);
-      if (!invoices.length) {
-        container.innerHTML = `<div class="empty-state">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-          </svg><p>No saved invoices yet.</p></div>`;
-        return;
-      }
-      container.innerHTML = invoices.map((inv, idx) => {
-        const days  = daysOverdue(inv.due);
-        const tone  = getTone(days);
-        const overdueLabel =
-          days === null ? 'No due date' :
-          days < 0      ? `Due in ${Math.abs(days)} day${Math.abs(days) !== 1 ? 's' : ''}` :
-          days === 0    ? 'Due today' :
-                          `${days} day${days !== 1 ? 's' : ''} overdue`;
-        const invCode       = CCY_META[inv.currency]?.code;
-        const showConverted = invCode && invCode !== baseCurrency && fxRatesOk;
-        const convertedStr  = showConverted
-          ? `<span class="hc-converted">≈ ${fmtBase(convertToBase(inv.total, inv.currency))}</span>`
-          : '';
-        // Show "Updated" timestamp if the invoice has been edited
-        const timestampStr = inv.updatedAt
-          ? `Updated ${new Date(inv.updatedAt).toLocaleDateString()}`
-          : `Saved ${new Date(inv.savedAt).toLocaleDateString()}`;
-        return `
-          <div class="history-card">
-            <div class="history-card-info">
-              <div class="hc-number">${escHtml(inv.id)}</div>
-              <div class="hc-client">${escHtml(inv.clientName || 'Unknown Client')}</div>
-              <div class="hc-date">${timestampStr}</div>
-              <div class="hc-overdue-badge ${tone.key}">${tone.emoji} ${overdueLabel}</div>
-            </div>
-            <div class="history-card-amount-group">
-              <div class="history-card-amount">${escHtml(inv.currency)}${fmt(inv.total)}</div>
-              ${convertedStr}
-            </div>
-            <div class="history-card-actions">
-              <button class="btn-draft-email" onclick="App.openEmailModal(${idx})" title="Draft follow-up email">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="13" height="13">
-                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                  <polyline points="22,6 12,13 2,6"/>
-                </svg>
-                Draft Email
-              </button>
-              <button class="btn-load" onclick="App.loadInvoiceToEditor(${idx})">Edit</button>
-              <button class="btn-del-invoice" onclick="App.deleteInvoice(${idx})">Delete</button>
-            </div>
-          </div>`;
-      }).join('');
+      // Show/hide search bar
+      const bar = document.getElementById('historySearchBar');
+      if (bar) bar.style.display = _allInvoices.length ? 'flex' : 'none';
+      renderHistoryList();
     } catch (e) {
       console.error('loadHistory error:', e);
+      const container = document.getElementById('historyList');
       container.innerHTML = '<div class="empty-state"><p>Failed to load invoices.</p></div>';
     }
+  }
+
+  function renderHistoryList() {
+    const container = document.getElementById('historyList');
+    const q = _historySearch.toLowerCase().trim();
+    const now = Date.now();
+    const ms30 = 30 * 24 * 60 * 60 * 1000;
+
+    // Filter
+    let filtered = _allInvoices.map((inv, idx) => ({ inv, idx })).filter(({ inv }) => {
+      if (_historyFilter === 'overdue') {
+        const d = daysOverdue(inv.due); return d !== null && d > 0;
+      }
+      if (_historyFilter === 'recent') {
+        const saved = new Date(inv.savedAt).getTime();
+        return (now - saved) <= ms30;
+      }
+      return true;
+    });
+
+    // Search
+    if (q) {
+      filtered = filtered.filter(({ inv }) =>
+        (inv.clientName || '').toLowerCase().includes(q) ||
+        (inv.id || '').toLowerCase().includes(q)
+      );
+    }
+
+    if (!_allInvoices.length) {
+      container.innerHTML = `<div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg><p>No saved invoices yet.</p></div>`;
+      return;
+    }
+
+    if (!filtered.length) {
+      container.innerHTML = `<div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="36" height="36">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <p>No invoices match your search.</p></div>`;
+      return;
+    }
+
+    container.innerHTML = filtered.map(({ inv, idx }) => {
+      const days = daysOverdue(inv.due);
+      const tone = getTone(days);
+      const overdueLabel =
+        days === null ? 'No due date' :
+          days < 0 ? `Due in ${Math.abs(days)} day${Math.abs(days) !== 1 ? 's' : ''}` :
+            days === 0 ? 'Due today' :
+              `${days} day${days !== 1 ? 's' : ''} overdue`;
+      const invCode = CCY_META[inv.currency]?.code;
+      const showConverted = invCode && invCode !== baseCurrency && fxRatesOk;
+      const convertedStr = showConverted
+        ? `<span class="hc-converted">≈ ${fmtBase(convertToBase(inv.total, inv.currency))}</span>`
+        : '';
+      const timestampStr = inv.updatedAt
+        ? `Updated ${new Date(inv.updatedAt).toLocaleDateString()}`
+        : `Saved ${new Date(inv.savedAt).toLocaleDateString()}`;
+      return `
+        <div class="history-card" onclick="App.loadInvoiceToEditor(${idx})" role="button" tabindex="0" title="Click to view / edit">
+          <div class="history-card-info">
+            <div class="hc-number">${escHtml(inv.id)}</div>
+            <div class="hc-client">${escHtml(inv.clientName || 'Unknown Client')}</div>
+            <div class="hc-date">${timestampStr}</div>
+            <div class="hc-overdue-badge ${tone.key}">${tone.emoji} ${overdueLabel}</div>
+          </div>
+          <div class="history-card-amount-group">
+            <div class="history-card-amount">${escHtml(inv.currency)}${fmt(inv.total)}</div>
+            ${convertedStr}
+          </div>
+          <div class="history-card-actions" onclick="event.stopPropagation()">
+            <button class="btn-draft-email" onclick="App.openEmailModal(${idx})" title="Draft follow-up email">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="13" height="13">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                <polyline points="22,6 12,13 2,6"/>
+              </svg>
+              Draft Email
+            </button>
+            <button class="btn-load" onclick="App.loadInvoiceToEditor(${idx})">Edit</button>
+            <button class="btn-del-invoice" onclick="App.deleteInvoice(${idx})">Delete</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function filterHistory() {
+    const input = document.getElementById('historySearchInput');
+    const clearBtn = document.getElementById('historySearchClear');
+    _historySearch = input ? input.value : '';
+    if (clearBtn) clearBtn.style.display = _historySearch ? 'flex' : 'none';
+    renderHistoryList();
+  }
+
+  function clearHistorySearch() {
+    const input = document.getElementById('historySearchInput');
+    if (input) input.value = '';
+    _historySearch = '';
+    const clearBtn = document.getElementById('historySearchClear');
+    if (clearBtn) clearBtn.style.display = 'none';
+    renderHistoryList();
+    input && input.focus();
+  }
+
+  function setHistoryFilter(filter) {
+    _historyFilter = filter;
+    document.querySelectorAll('.history-pill').forEach(p =>
+      p.classList.toggle('active', p.dataset.filter === filter)
+    );
+    renderHistoryList();
   }
 
   /* ══════════ AI FOLLOW-UP EMAIL MODAL ══════════ */
@@ -817,9 +899,9 @@ const App = (() => {
     modal.classList.add('visible');
     document.body.style.overflow = 'hidden';
     document.getElementById('modalInvoiceRef').textContent = inv.id;
-    document.getElementById('modalLoading').style.display  = 'flex';
-    document.getElementById('modalResult').style.display   = 'none';
-    document.getElementById('modalError').style.display    = 'none';
+    document.getElementById('modalLoading').style.display = 'flex';
+    document.getElementById('modalResult').style.display = 'none';
+    document.getElementById('modalError').style.display = 'none';
 
     const days = daysOverdue(inv.due);
     const tone = getTone(days);
@@ -827,11 +909,11 @@ const App = (() => {
       ? new Date(inv.due).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
       : 'No due date specified';
     const amountFormatted = `${inv.currency}${fmt(inv.total)}`;
-    const overdueContext  =
+    const overdueContext =
       days === null ? 'The invoice has no due date.' :
-      days < 0      ? `Not yet due — due in ${Math.abs(days)} day(s) on ${dueDateFormatted}.` :
-      days === 0    ? `Due TODAY (${dueDateFormatted}).` :
-                      `${days} day(s) overdue. Was due on ${dueDateFormatted}.`;
+        days < 0 ? `Not yet due — due in ${Math.abs(days)} day(s) on ${dueDateFormatted}.` :
+          days === 0 ? `Due TODAY (${dueDateFormatted}).` :
+            `${days} day(s) overdue. Was due on ${dueDateFormatted}.`;
     const systemPrompt =
       'You are a professional business assistant. Based on the provided invoice data, ' +
       'write a polite but clear follow-up email.\n' +
@@ -857,30 +939,30 @@ const App = (() => {
         body: JSON.stringify({
           messages: [
             { role: 'system', content: systemPrompt },
-            { role: 'user',   content: userMessage }
+            { role: 'user', content: userMessage }
           ]
         })
       });
       if (!res.ok) throw new Error(`Worker responded HTTP ${res.status}`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      const rawText      = data.content || '';
+      const rawText = data.content || '';
       const subjectMatch = rawText.match(/^SUBJECT:\s*(.+)/im);
-      const subject      = subjectMatch ? subjectMatch[1].trim() : `Follow-up: Invoice ${inv.id}`;
-      const body         = rawText.replace(/^SUBJECT:\s*.+\n?/im, '').trim();
+      const subject = subjectMatch ? subjectMatch[1].trim() : `Follow-up: Invoice ${inv.id}`;
+      const body = rawText.replace(/^SUBJECT:\s*.+\n?/im, '').trim();
       _currentDraft = { subject, body, clientEmail: inv.clientEmail || '' };
       document.getElementById('modalLoading').style.display = 'none';
-      document.getElementById('modalResult').style.display  = 'block';
-      const badge       = document.getElementById('modalToneBadge');
+      document.getElementById('modalResult').style.display = 'block';
+      const badge = document.getElementById('modalToneBadge');
       badge.textContent = `${tone.emoji}  ${tone.label}`;
-      badge.className   = `modal-tone-badge ${tone.key}`;
+      badge.className = `modal-tone-badge ${tone.key}`;
       document.getElementById('modalSubject').value = subject;
-      document.getElementById('modalBody').value    = body;
+      document.getElementById('modalBody').value = body;
     } catch (err) {
       console.error('Email draft error:', err);
       document.getElementById('modalLoading').style.display = 'none';
-      document.getElementById('modalError').style.display   = 'flex';
-      document.getElementById('modalErrorMsg').textContent  =
+      document.getElementById('modalError').style.display = 'flex';
+      document.getElementById('modalErrorMsg').textContent =
         `AI drafting failed: ${err.message}`;
     }
   }
@@ -894,8 +976,8 @@ const App = (() => {
     document.body.style.overflow = '';
     setTimeout(() => {
       document.getElementById('modalLoading').style.display = 'flex';
-      document.getElementById('modalResult').style.display  = 'none';
-      document.getElementById('modalError').style.display   = 'none';
+      document.getElementById('modalResult').style.display = 'none';
+      document.getElementById('modalError').style.display = 'none';
     }, 200);
   }
 
@@ -933,14 +1015,14 @@ const App = (() => {
         if (opt.value === currentCurrency) { sel.value = currentCurrency; break; }
       }
       document.getElementById('invoiceNumber').value = inv.id;
-      document.getElementById('invoiceDate').value         = inv.date;
-      document.getElementById('invoiceDue').value          = inv.due;
-      document.getElementById('clientName').value          = inv.clientName;
-      document.getElementById('clientEmail').value         = inv.clientEmail;
-      document.getElementById('clientAddress').value       = inv.clientAddr;
-      document.getElementById('invoiceNotes').value        = inv.notes;
-      document.getElementById('taxRateInput').value        = inv.taxPct;
-      document.getElementById('invoiceBody').innerHTML     = '';
+      document.getElementById('invoiceDate').value = inv.date;
+      document.getElementById('invoiceDue').value = inv.due;
+      document.getElementById('clientName').value = inv.clientName;
+      document.getElementById('clientEmail').value = inv.clientEmail;
+      document.getElementById('clientAddress').value = inv.clientAddr;
+      document.getElementById('invoiceNotes').value = inv.notes;
+      document.getElementById('taxRateInput').value = inv.taxPct;
+      document.getElementById('invoiceBody').innerHTML = '';
       inv.items.forEach(item => addRow(item.desc, item.qty, item.price));
 
       // Enter edit mode — toolbar swaps to Update + Cancel Edit
@@ -956,12 +1038,17 @@ const App = (() => {
     const rawInv = localStorage.getItem(KV_INVOICES);
     const invoices = rawInv ? JSON.parse(rawInv) : [];
     const inv = invoices[idx];
-    const label = inv ? `${inv.id}${inv.clientName ? ' — ' + inv.clientName : ''}` : 'this invoice';
+    if (!inv) { showToast('Invoice not found.'); return; }
+    const targetId = inv.id;
+    const label = `${inv.id}${inv.clientName ? ' — ' + inv.clientName : ''}`;
     showConfirm(`Delete ${label}?`, 'This cannot be undone.', async () => {
       try {
         const raw2 = localStorage.getItem(KV_INVOICES);
         let list = raw2 ? JSON.parse(raw2) : [];
-        list.splice(idx, 1);
+        // Find by id to avoid stale-index issues
+        const freshIdx = list.findIndex(i => i.id === targetId);
+        if (freshIdx === -1) { showToast('Invoice already deleted.'); loadHistory(); return; }
+        list.splice(freshIdx, 1);
         await kvSet(KV_INVOICES, JSON.stringify(list));
         showToast('Invoice deleted.');
         loadHistory();
@@ -970,11 +1057,11 @@ const App = (() => {
   }
 
   function showConfirm(title, subtitle, onConfirm) {
-    document.getElementById('confirmTitle').textContent    = title;
+    document.getElementById('confirmTitle').textContent = title;
     document.getElementById('confirmSubtitle').textContent = subtitle;
     document.getElementById('confirmDialog').classList.add('visible');
     document.body.style.overflow = 'hidden';
-    const btnOk  = document.getElementById('confirmOk');
+    const btnOk = document.getElementById('confirmOk');
     const btnCan = document.getElementById('confirmCancel');
     const cleanup = () => {
       document.getElementById('confirmDialog').classList.remove('visible');
@@ -992,25 +1079,25 @@ const App = (() => {
       const saved = await kvGet(KV_SETTINGS);
       if (saved) {
         settings = JSON.parse(saved);
-        document.getElementById('settingBizName').value    = settings.bizName    || '';
+        document.getElementById('settingBizName').value = settings.bizName || '';
         document.getElementById('settingBizAddress').value = settings.bizAddress || '';
-        document.getElementById('settingPhone').value      = settings.phone      || '';
-        document.getElementById('settingEmail').value      = settings.email      || '';
-        document.getElementById('settingLinkedin').value   = settings.linkedin   || '';
-        document.getElementById('settingInstagram').value  = settings.instagram  || '';
-        document.getElementById('settingTwitter').value    = settings.twitter    || '';
-        document.getElementById('settingGithub').value     = settings.github     || '';
+        document.getElementById('settingPhone').value = settings.phone || '';
+        document.getElementById('settingEmail').value = settings.email || '';
+        document.getElementById('settingLinkedin').value = settings.linkedin || '';
+        document.getElementById('settingInstagram').value = settings.instagram || '';
+        document.getElementById('settingTwitter').value = settings.twitter || '';
+        document.getElementById('settingGithub').value = settings.github || '';
         applySettingsToInvoice();
       }
-    } catch (_) {}
+    } catch (_) { }
     const sel = document.getElementById('baseCurrencySelect');
     if (sel) sel.value = baseCurrency;
     // Restore logo from localStorage
     const logoB64 = localStorage.getItem(LS_LOGO_KEY);
     if (logoB64) {
       settings.logoUrl = logoB64;
-      const preview         = document.getElementById('settingsLogoPreview');
-      preview.src           = logoB64;
+      const preview = document.getElementById('settingsLogoPreview');
+      preview.src = logoB64;
       preview.style.display = 'block';
       document.getElementById('logoPlaceholder').style.display = 'none';
       applySettingsToInvoice();
@@ -1019,45 +1106,45 @@ const App = (() => {
 
   /* ══════════ SETTINGS: SAVE ══════════ */
   async function saveSettings() {
-    const statusEl      = document.getElementById('settingsSaveStatus');
-    settings.bizName    = document.getElementById('settingBizName').value.trim();
+    const statusEl = document.getElementById('settingsSaveStatus');
+    settings.bizName = document.getElementById('settingBizName').value.trim();
     settings.bizAddress = document.getElementById('settingBizAddress').value.trim();
-    settings.phone      = document.getElementById('settingPhone').value.trim();
-    settings.email      = document.getElementById('settingEmail').value.trim();
-    settings.linkedin   = document.getElementById('settingLinkedin').value.trim();
-    settings.instagram  = document.getElementById('settingInstagram').value.trim();
-    settings.twitter    = document.getElementById('settingTwitter').value.trim();
-    settings.github     = document.getElementById('settingGithub').value.trim();
+    settings.phone = document.getElementById('settingPhone').value.trim();
+    settings.email = document.getElementById('settingEmail').value.trim();
+    settings.linkedin = document.getElementById('settingLinkedin').value.trim();
+    settings.instagram = document.getElementById('settingInstagram').value.trim();
+    settings.twitter = document.getElementById('settingTwitter').value.trim();
+    settings.github = document.getElementById('settingGithub').value.trim();
 
     try {
       await kvSet(KV_SETTINGS, JSON.stringify(settings));
       applySettingsToInvoice();
       statusEl.textContent = '✓ Settings saved';
-      statusEl.className   = 'save-status ok';
+      statusEl.className = 'save-status ok';
       showToast('Settings saved!');
       setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'save-status'; }, 3000);
       updateStatus('online', 'Ready');
     } catch (e) {
       statusEl.textContent = '✗ Failed to save';
-      statusEl.className   = 'save-status err';
+      statusEl.className = 'save-status err';
     }
   }
 
   /* ══════════ APPLY SETTINGS → INVOICE ══════════ */
   function applySettingsToInvoice() {
-    document.getElementById('invoiceBizName').textContent    = settings.bizName    || 'Your Business Name';
+    document.getElementById('invoiceBizName').textContent = settings.bizName || 'Your Business Name';
     document.getElementById('invoiceBizAddress').textContent = settings.bizAddress || '123 Main Street, City, Country';
     const contactEl = document.getElementById('invoiceBizContact');
-    const parts     = [];
+    const parts = [];
     if (settings.phone) parts.push(escHtml(settings.phone));
     if (settings.email) parts.push(
       `<a href="mailto:${escHtml(settings.email)}">${escHtml(settings.email)}</a>`
     );
     [
-      { key: 'linkedin',  label: 'LinkedIn'  },
+      { key: 'linkedin', label: 'LinkedIn' },
       { key: 'instagram', label: 'Instagram' },
-      { key: 'twitter',   label: 'X'         },
-      { key: 'github',    label: 'GitHub'    }
+      { key: 'twitter', label: 'X' },
+      { key: 'github', label: 'GitHub' }
     ].forEach(({ key, label }) => {
       if (settings[key]) parts.push(
         `<a href="${escHtml(settings[key])}" target="_blank" rel="noopener">${label}</a>`
@@ -1065,47 +1152,47 @@ const App = (() => {
     });
     contactEl.innerHTML = parts.join(' &nbsp;·&nbsp; ');
     if (settings.logoUrl) {
-      const logo         = document.getElementById('invoiceLogo');
-      logo.src           = settings.logoUrl;
+      const logo = document.getElementById('invoiceLogo');
+      logo.src = settings.logoUrl;
       logo.style.display = 'block';
     }
   }
 
   /* ══════════ LOGO UPLOAD ══════════ */
   function uploadLogo(input) {
-    const file     = input.files[0];
+    const file = input.files[0];
     const statusEl = document.getElementById('logoUploadStatus');
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
       statusEl.textContent = '✗ File too large (max 2MB)';
-      statusEl.className   = 'upload-status err'; return;
+      statusEl.className = 'upload-status err'; return;
     }
     statusEl.innerHTML = '<span class="spinner"></span> Processing…';
     statusEl.className = 'upload-status';
     const reader = new FileReader();
     reader.onload = (e) => {
-      const dataUrl    = e.target.result;
+      const dataUrl = e.target.result;
       settings.logoUrl = dataUrl;
       localStorage.setItem(LS_LOGO_KEY, dataUrl);
       kvSet(KV_SETTINGS, JSON.stringify(settings))
         .then(() => {
-          const preview         = document.getElementById('settingsLogoPreview');
-          preview.src           = dataUrl;
+          const preview = document.getElementById('settingsLogoPreview');
+          preview.src = dataUrl;
           preview.style.display = 'block';
           document.getElementById('logoPlaceholder').style.display = 'none';
           applySettingsToInvoice();
           statusEl.textContent = '✓ Logo saved';
-          statusEl.className   = 'upload-status ok';
+          statusEl.className = 'upload-status ok';
           showToast('Logo uploaded!');
         })
         .catch(() => {
           statusEl.textContent = '✗ Save failed — try again';
-          statusEl.className   = 'upload-status err';
+          statusEl.className = 'upload-status err';
         });
     };
     reader.onerror = () => {
       statusEl.textContent = '✗ Read failed — try again';
-      statusEl.className   = 'upload-status err';
+      statusEl.className = 'upload-status err';
     };
     reader.readAsDataURL(file);
   }
@@ -1113,7 +1200,7 @@ const App = (() => {
   /* ══════════ STATUS BAR ══════════ */
   function updateStatus(state, text) {
     const dot = document.getElementById('statusDot');
-    if (dot) dot.className    = 'status-dot ' + state;
+    if (dot) dot.className = 'status-dot ' + state;
     const txt = document.getElementById('statusText');
     if (txt) txt.textContent = text;
   }
@@ -1123,7 +1210,7 @@ const App = (() => {
   function showToast(msg) {
     let toast = document.getElementById('toast');
     if (!toast) {
-      toast    = document.createElement('div');
+      toast = document.createElement('div');
       toast.id = 'toast';
       document.body.appendChild(toast);
     }
@@ -1143,7 +1230,8 @@ const App = (() => {
   function escHtml(s) {
     return String(s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   function toggleTheme() {
@@ -1161,12 +1249,12 @@ const App = (() => {
     const raw = localStorage.getItem(KV_INVOICES);
     const invoices = raw ? JSON.parse(raw) : [];
     if (!invoices.length) { showToast('No invoices to export.'); return; }
-    const blob = new Blob([JSON.stringify({ version:1, exportedAt: new Date().toISOString(), invoices }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), invoices }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `eliteinvoice-backup-${new Date().toISOString().slice(0,10)}.json`; a.click();
+    a.href = url; a.download = `eliteinvoice-backup-${new Date().toISOString().slice(0, 10)}.json`; a.click();
     URL.revokeObjectURL(url);
-    showToast(`${invoices.length} invoice${invoices.length>1?'s':''} exported.`);
+    showToast(`${invoices.length} invoice${invoices.length > 1 ? 's' : ''} exported.`);
   }
   function importInvoices(input) {
     const file = input.files[0]; if (!file) return;
@@ -1181,7 +1269,7 @@ const App = (() => {
         const ids = new Set(existing.map(i => i.id));
         const merged = [...existing, ...incoming.filter(i => !ids.has(i.id))];
         localStorage.setItem(KV_INVOICES, JSON.stringify(merged));
-        showToast(`${incoming.length} invoice${incoming.length>1?'s':''} imported (${merged.length-existing.length} new).`);
+        showToast(`${incoming.length} invoice${incoming.length > 1 ? 's' : ''} imported (${merged.length - existing.length} new).`);
         loadHistory();
       } catch (err) { showToast('Import failed: ' + err.message); }
       input.value = '';
@@ -1240,7 +1328,8 @@ const App = (() => {
     exportInvoices, importInvoices,
     toggleTheme,
     calculateTotalRevenue,
-    selectTemplate, applyTemplate
+    selectTemplate, applyTemplate,
+    filterHistory, clearHistorySearch, setHistoryFilter
   };
 })();
 
@@ -1263,10 +1352,41 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /* ══════════════════════════════════════════════════
+   SAFARI PRINT FIX
+   Safari enforces a minimum top margin (~12 mm) even when
+   @page { margin: 0 } is declared in CSS, causing the top gradient
+   bar and invoice header to be physically clipped.
+   Since @page rules cannot be scoped to a CSS selector, we detect
+   Safari and — only at print time — inject a temporary <style> block
+   with a matching top margin so the content is never cut off.
+   The block is removed after printing; no effect on screen layout.
+══════════════════════════════════════════════════ */
+(function () {
+  const isSafari =
+    typeof navigator !== 'undefined' &&
+    /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  if (!isSafari) return;
+
+  window.addEventListener('beforeprint', function () {
+    if (document.getElementById('_safari_print_fix')) return;
+    const el = document.createElement('style');
+    el.id = '_safari_print_fix';
+    el.textContent =
+      '@media print { @page { size: A4; margin: 12mm 0 0 0; } }';
+    document.head.appendChild(el);
+  });
+
+  window.addEventListener('afterprint', function () {
+    const el = document.getElementById('_safari_print_fix');
+    if (el) el.remove();
+  });
+}());
+
+/* ══════════════════════════════════════════════════
    FAQ ACCORDION (global helper)
 ══════════════════════════════════════════════════ */
 function toggleFaq(btn) {
-  const item   = btn.closest('.faq-item');
+  const item = btn.closest('.faq-item');
   const answer = item.querySelector('.faq-answer');
   const isOpen = answer.classList.contains('open');
   // Close all
