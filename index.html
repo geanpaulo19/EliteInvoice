@@ -1,1425 +1,1400 @@
-<!DOCTYPE html>
-<html lang="en">
+/* ═══════════════════════════════════════════════════════════
+   EliteInvoice — Application Logic
+   Storage : localStorage
+   AI      : Groq via Cloudflare Worker proxy
+   Model   : llama-3.1-8b-instant
+   FX      : Frankfurter API (primary) → open.er-api.com (fallback)
+═══════════════════════════════════════════════════════════ */
 
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>EliteInvoice</title>
-  <link rel="stylesheet" href="style.css" />
-  <!-- No third-party AI SDK required — calls go via your Cloudflare Worker -->
-</head>
+const DEFAULT_TAX_RATE = 10;
+const DEFAULT_BASE_CCY = 'USD';
 
-<body>
+const KV_SETTINGS = 'eliteinvoice_settings';
+const KV_INVOICES = 'eliteinvoice_invoices';
+const KV_COUNTER = 'eliteinvoice_counter';
+const KV_BASE_CCY = 'eliteinvoice_base_currency';
+const WORKER_URL = 'https://api.geanpaulofrancois.workers.dev/';
 
-  <!-- ═══════════════════════ SPLASH SCREEN ═══════════════════════ -->
-  <div id="splashScreen" class="splash-screen" style="display:none">
-    <div class="splash-bg">
-      <div class="splash-orb splash-orb-1"></div>
-      <div class="splash-orb splash-orb-2"></div>
-      <div class="splash-orb splash-orb-3"></div>
-    </div>
-    <div class="splash-card">
-      <div class="splash-logo-wrap">
-        <svg width="52" height="52" viewBox="0 0 28 28" fill="none">
-          <rect width="28" height="28" rx="7" fill="#0071e3" />
-          <path d="M7 20L11 8H14L17 16L19 11H22L18 20H15L12 12L10 20H7Z" fill="white" />
+/* ── localStorage helpers ── */
+function kvGet(key) {
+  return Promise.resolve(localStorage.getItem(key));
+}
+function kvSet(key, value) {
+  localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
+  return Promise.resolve();
+}
+function kvDelete(key) {
+  localStorage.removeItem(key);
+  return Promise.resolve();
+}
+const LS_LOGO_KEY = 'eliteinvoice_logo_b64';   // base64 data-URL stored in localStorage
+const KV_TEMPLATE = 'eliteinvoice_template';
+const KV_SEEN = 'eliteinvoice_seen';
+
+const CCY_META = {
+  '$': { code: 'USD', symbol: '$' },
+  '€': { code: 'EUR', symbol: '€' },
+  '£': { code: 'GBP', symbol: '£' },
+  '₱': { code: 'PHP', symbol: '₱' },
+  '¥': { code: 'JPY', symbol: '¥' },
+  'A$': { code: 'AUD', symbol: 'A$' },
+  'C$': { code: 'CAD', symbol: 'C$' },
+  'S$': { code: 'SGD', symbol: 'S$' },
+  'HK$': { code: 'HKD', symbol: 'HK$' },
+  'NZ$': { code: 'NZD', symbol: 'NZ$' },
+  '₩': { code: 'KRW', symbol: '₩' },
+  '₹': { code: 'INR', symbol: '₹' },
+  'R$': { code: 'BRL', symbol: 'R$' },
+  'Fr': { code: 'CHF', symbol: 'Fr' },
+  'kr': { code: 'SEK', symbol: 'kr' },
+  'Mex$': { code: 'MXN', symbol: 'Mex$' },
+  'د.إ': { code: 'AED', symbol: 'د.إ' },
+  'SAR': { code: 'SAR', symbol: 'SAR' },
+  'zł': { code: 'PLN', symbol: 'zł' },
+  'Kč': { code: 'CZK', symbol: 'Kč' },
+};
+
+const CODE_TO_SYM = Object.fromEntries(
+  Object.entries(CCY_META).map(([sym, { code }]) => [code, sym])
+);
+
+const App = (() => {
+
+  let currentCurrency = '$';
+  let baseCurrency = DEFAULT_BASE_CCY;
+  let fxRates = {};
+  let fxRatesOk = false;
+
+  /*
+   * _editingIndex — tracks which invoice is currently loaded
+   * for editing.  null  = composing a brand-new invoice.
+   * number = index into the saved invoices array; the Update
+   * button is shown and Save Invoice is hidden in this state.
+   */
+  let _editingIndex  = null;
+  let _historyFilter = 'all';
+  let _historySearch = '';
+
+  let settings = {
+    bizName: '', bizAddress: '',
+    phone: '', email: '',
+    linkedin: '', instagram: '', twitter: '', github: '',
+    logoUrl: ''
+  };
+
+  let _currentDraft = { subject: '', body: '', clientEmail: '' };
+
+  /* ══════════ INIT ══════════ */
+  async function init() {
+    showSplashIfNew();
+    initTheme();
+    initTemplate();
+    // Set up dates and defaults immediately — never blocked by network
+    const today = new Date();
+    document.getElementById('invoiceDate').value = fmtDate(today);
+    const due = new Date(today); due.setDate(due.getDate() + 30);
+    document.getElementById('invoiceDue').value = fmtDate(due);
+    document.getElementById('taxRateInput').value = DEFAULT_TAX_RATE;
+    addRow();
+
+    await loadBaseCurrency().catch(e => console.warn('loadBaseCurrency failed:', e));
+    await loadSettings().catch(e => console.warn('loadSettings failed:', e));
+    await resolveInvoiceNumber().catch(e => {
+      console.warn('resolveInvoiceNumber failed:', e);
+      document.getElementById('invoiceNumber').value = '#INV-0001';
+    });
+
+    fetchFxRates().catch(e => console.warn('FX fetch failed on init:', e));
+
+    updateStatus('online', 'Ready');
+  }
+
+  /* ══════════ EDIT-MODE UI HELPERS ══════════ */
+
+  /**
+   * setEditMode(index)
+   * Switches the invoice toolbar into "editing an existing invoice" mode.
+   * Hides "Save Invoice", shows "Update Invoice" + a "Cancel Edit" button.
+   * Passing null resets back to new-invoice mode.
+   */
+  function setEditMode(index) {
+    _editingIndex = index;
+    const isEditing = index !== null;
+
+    document.getElementById('btnSaveInvoice').style.display = isEditing ? 'none' : '';
+    document.getElementById('btnUpdateInvoice').style.display = isEditing ? '' : 'none';
+    document.getElementById('btnCancelEdit').style.display = isEditing ? '' : 'none';
+
+    // Visual cue on the invoice document itself
+    const doc = document.getElementById('invoiceDocument');
+    if (isEditing) {
+      doc.classList.add('is-editing');
+    } else {
+      doc.classList.remove('is-editing');
+    }
+  }
+
+  /* ══════════ BASE CURRENCY ══════════ */
+  async function loadBaseCurrency() {
+    try {
+      const saved = await kvGet(KV_BASE_CCY);
+      if (saved) baseCurrency = saved;
+    } catch (_) { }
+    const sel = document.getElementById('baseCurrencySelect');
+    if (sel) sel.value = baseCurrency;
+  }
+
+  async function saveBaseCurrency(code) {
+    baseCurrency = code;
+    try { await kvSet(KV_BASE_CCY, code); }
+    catch (e) { console.warn('Could not persist base currency:', e); }
+    await fetchFxRates();
+    if (document.getElementById('view-history').classList.contains('active'))
+      loadHistory();
+    showToast(`Base currency set to ${code}`);
+  }
+
+  /* ══════════ LIVE FX RATES ══════════ */
+  async function _fetchFrankfurter() {
+    const res = await fetch(`https://api.frankfurter.app/latest?from=${baseCurrency}`);
+    if (!res.ok) throw new Error(`Frankfurter HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data.rates || typeof data.rates !== 'object')
+      throw new Error('Frankfurter: unexpected shape');
+    return { ...data.rates, [baseCurrency]: 1 };
+  }
+
+  async function _fetchOpenER() {
+    const res = await fetch(`https://open.er-api.com/v6/latest/${baseCurrency}`);
+    if (!res.ok) throw new Error(`OpenER HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.result !== 'success' || !data.rates)
+      throw new Error('OpenER: result not success');
+    return { ...data.rates, [baseCurrency]: 1 };
+  }
+
+  async function fetchFxRates() {
+    fxRatesOk = false;
+    try {
+      fxRates = await _fetchFrankfurter();
+      fxRatesOk = true;
+      console.info('FX: Frankfurter OK');
+      return true;
+    } catch (e) {
+      console.warn('Frankfurter failed, trying fallback…', e.message);
+    }
+    try {
+      fxRates = await _fetchOpenER();
+      fxRatesOk = true;
+      console.info('FX: open.er-api fallback OK');
+      return true;
+    } catch (e) {
+      console.warn('Both FX sources failed.', e.message);
+    }
+    fxRates = {};
+    fxRatesOk = false;
+    return false;
+  }
+
+  function convertToBase(amount, fromSymbol) {
+    const meta = CCY_META[fromSymbol];
+    if (!meta) return amount;
+    const fromCode = meta.code;
+    if (fromCode === baseCurrency) return amount;
+    const rate = fxRates[fromCode];
+    if (!rate || rate === 0) return amount;
+    return amount / rate;
+  }
+
+  function fmtBase(amount) {
+    try {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency', currency: baseCurrency,
+        minimumFractionDigits: 2, maximumFractionDigits: 2
+      }).format(amount);
+    } catch (_) {
+      return (CODE_TO_SYM[baseCurrency] || baseCurrency) + fmt(amount);
+    }
+  }
+
+  /* ══════════ NAVIGATION ══════════ */
+  function navigate(view) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById('view-' + view).classList.add('active');
+    document.querySelectorAll('.nav-item').forEach(n => {
+      n.classList.toggle('active', n.dataset.view === view);
+    });
+    if (view === 'history') loadHistory();
+    closeSidebar();
+  }
+
+  /* ══════════ SIDEBAR ══════════ */
+  function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    const hamburger = document.getElementById('hamburgerBtn');
+    const brandPill = document.getElementById('mobileBrandPill');
+    const isOpen = sidebar.classList.toggle('is-open');
+    hamburger.classList.toggle('is-open', isOpen);
+    overlay.classList.toggle('visible', isOpen);
+    if (brandPill) brandPill.classList.toggle('sidebar-blurred', isOpen);
+    document.body.style.overflow = isOpen ? 'hidden' : '';
+  }
+
+  function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('is-open');
+    document.getElementById('hamburgerBtn').classList.remove('is-open');
+    document.getElementById('sidebarOverlay').classList.remove('visible');
+    const brandPill = document.getElementById('mobileBrandPill');
+    if (brandPill) brandPill.classList.remove('sidebar-blurred');
+    document.body.style.overflow = '';
+  }
+
+  /* ══════════ INVOICE NUMBER ══════════ */
+  async function resolveInvoiceNumber() {
+    try {
+      const counter = await kvGet(KV_COUNTER);
+      const num = counter ? parseInt(counter) : 0;
+      document.getElementById('invoiceNumber').value =
+        '#INV-' + String(num + 1).padStart(4, '0');
+    } catch (e) {
+      document.getElementById('invoiceNumber').value = '#INV-0001';
+    }
+  }
+
+  /* ══════════ ROW MANAGEMENT ══════════ */
+  function addRow(desc = '', qty = 1, price = '') {
+    const tbody = document.getElementById('invoiceBody');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="text" placeholder="Item description" value="${escHtml(desc)}" oninput="App.updateTotals()" /></td>
+      <td class="td-qty"><input type="number" value="${qty}" min="0" step="any" oninput="App.updateTotals()" /></td>
+      <td class="td-price"><input type="number" value="${price}" min="0" step="any" placeholder="0.00" oninput="App.updateTotals()" /></td>
+      <td class="td-total">—</td>
+      <td class="col-del no-print">
+        <button class="del-row-btn" onclick="App.deleteRow(this)" title="Remove row">×</button>
+      </td>`;
+    tbody.appendChild(tr);
+    updateTotals();
+  }
+
+  function deleteRow(btn) {
+    btn.closest('tr').remove();
+    updateTotals();
+  }
+
+  /* ══════════ TOTALS ══════════ */
+  function updateTotals() {
+    const rows = document.querySelectorAll('#invoiceBody tr');
+    const sym = currentCurrency;
+    let subtotal = 0;
+    rows.forEach(row => {
+      const inputs = row.querySelectorAll('input');
+      const qty = parseFloat(inputs[1].value) || 0;
+      const price = parseFloat(inputs[2].value) || 0;
+      const line = qty * price;
+      subtotal += line;
+      row.querySelector('.td-total').textContent = line ? sym + fmt(line) : '—';
+    });
+    const taxPct = parseFloat(document.getElementById('taxRateInput').value) || 0;
+    const tax = subtotal * (taxPct / 100);
+    const total = subtotal + tax;
+    document.getElementById('subtotalVal').textContent = sym + fmt(subtotal);
+    document.getElementById('taxVal').textContent = sym + fmt(tax);
+    document.getElementById('totalVal').textContent = sym + fmt(total);
+  }
+
+  /* ══════════ CURRENCY ══════════ */
+  function setCurrency(sym) {
+    currentCurrency = sym;
+    updateTotals();
+  }
+
+  /* ══════════ NEW INVOICE ══════════ */
+  async function newInvoice(silent = false) {
+    setEditMode(null);   // always exit edit mode on New
+    document.getElementById('invoiceBody').innerHTML = '';
+    document.getElementById('clientName').value = '';
+    document.getElementById('clientEmail').value = '';
+    document.getElementById('clientAddress').value = '';
+    document.getElementById('invoiceNotes').value = '';
+    document.getElementById('magicInput').value = '';
+    document.getElementById('magicStatus').textContent = '';
+    document.getElementById('taxRateInput').value = DEFAULT_TAX_RATE;
+    const today = new Date();
+    document.getElementById('invoiceDate').value = fmtDate(today);
+    const due = new Date(today); due.setDate(due.getDate() + 30);
+    document.getElementById('invoiceDue').value = fmtDate(due);
+    await resolveInvoiceNumber();
+    addRow();
+    if (!silent) showToast('Ready for a new invoice.');
+  }
+
+  /* ══════════ CANCEL EDIT ══════════ */
+  function cancelEdit() {
+    setEditMode(null);
+    newInvoice(true);  // silent=true — we show our own toast below
+    showToast('Edit cancelled — form reset.');
+  }
+
+  /* ══════════ AI MAGIC PARSE ══════════ */
+  async function runMagicParse() {
+    const input = document.getElementById('magicInput').value.trim();
+    if (!input) { showToast('Please enter invoice details first.'); return; }
+
+    const btn = document.getElementById('magicBtn');
+    btn.disabled = true;
+    setMagicStatus('loading', 'Parsing with AI…');
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    const systemPrompt =
+      'You are an invoice data extractor. Extract ALL possible invoice fields from the user text. ' +
+      'Today\'s date is ' + today + '. ' +
+      'Return ONLY valid JSON — no markdown, no extra text — in exactly this shape:\n' +
+      '{\n' +
+      '  "currency": "$",\n' +
+      '  "clientName": "",\n' +
+      '  "clientEmail": "",\n' +
+      '  "clientAddress": "",\n' +
+      '  "date": "",\n' +
+      '  "due": "",\n' +
+      '  "taxPct": null,\n' +
+      '  "notes": "",\n' +
+      '  "items": [{"desc": "", "qty": 1, "price": 0}]\n' +
+      '}\n' +
+      'Rules:\n' +
+      '- currency: symbol only e.g. $, €, £, ₱. Default to "$" if not mentioned.\n' +
+      '- date and due: YYYY-MM-DD format. Resolve relative dates like "today", "in 30 days", "end of month" using today\'s date. Leave "" if not mentioned.\n' +
+      '- taxPct: number only e.g. 10 for 10%. null if not mentioned.\n' +
+      '- clientName, clientEmail, clientAddress, notes: plain strings, "" if not found.\n' +
+      '- items: array of {desc, qty, price}. qty and price must be numbers.';
+
+    try {
+      const res = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: input }
+          ]
+        })
+      });
+      if (!res.ok) throw new Error(`Worker responded HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      const rawText = data.content || '';
+
+      const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/) ||
+        rawText.match(/(\{[\s\S]*\})/);
+      const jsonStr = jsonMatch ? jsonMatch[1].trim() : rawText.trim();
+      const parsed = JSON.parse(jsonStr);
+
+      let filledFields = 0;
+
+      // Currency
+      if (parsed.currency) {
+        currentCurrency = parsed.currency;
+        const sel = document.getElementById('currencySelect');
+        for (let opt of sel.options) {
+          if (opt.value === parsed.currency) { sel.value = parsed.currency; break; }
+        }
+      }
+
+      // Client fields
+      if (parsed.clientName) { document.getElementById('clientName').value = parsed.clientName; filledFields++; }
+      if (parsed.clientEmail) { document.getElementById('clientEmail').value = parsed.clientEmail; filledFields++; }
+      if (parsed.clientAddress) { document.getElementById('clientAddress').value = parsed.clientAddress; filledFields++; }
+
+      // Dates
+      if (parsed.date) { document.getElementById('invoiceDate').value = parsed.date; filledFields++; }
+      if (parsed.due) { document.getElementById('invoiceDue').value = parsed.due; filledFields++; }
+
+      // Tax
+      if (parsed.taxPct !== null && parsed.taxPct !== undefined && parsed.taxPct !== '') {
+        document.getElementById('taxRateInput').value = parsed.taxPct;
+        updateTotals();
+        filledFields++;
+      }
+
+      // Notes
+      if (parsed.notes) { document.getElementById('invoiceNotes').value = parsed.notes; filledFields++; }
+
+      // Line items
+      if (Array.isArray(parsed.items) && parsed.items.length > 0) {
+        document.getElementById('invoiceBody').innerHTML = '';
+        parsed.items.forEach(item => addRow(item.desc, item.qty, item.price));
+        const itemCount = parsed.items.length;
+        setMagicStatus('ok', `✓ ${itemCount} item${itemCount > 1 ? 's' : ''}${filledFields > 0 ? ' + ' + filledFields + ' field' + (filledFields > 1 ? 's' : '') + ' filled' : ''}`);
+        showToast('Invoice auto-filled!');
+      } else if (filledFields > 0) {
+        setMagicStatus('ok', `✓ ${filledFields} field${filledFields > 1 ? 's' : ''} filled`);
+        showToast('Invoice fields populated!');
+      } else {
+        setMagicStatus('err', 'Nothing found. Try adding more detail.');
+      }
+    } catch (err) {
+      console.error('AI parse error:', err);
+      setMagicStatus('err', '\u2717 ' + (err.message || 'Unknown error — open F12 Console for details.'));
+      showToast('AI parsing failed. Please try again.');
+    }
+    btn.disabled = false;
+  }
+
+  function setMagicStatus(type, msg) {
+    const el = document.getElementById('magicStatus');
+    el.innerHTML = type === 'loading' ? `<span class="spinner"></span> ${msg}` : msg;
+    el.style.color = type === 'ok' ? 'var(--success)'
+      : type === 'err' ? 'var(--danger)'
+        : 'var(--text-secondary)';
+  }
+
+  /* ══════════ BUILD INVOICE OBJECT FROM FORM ══════════ */
+  function _buildInvoiceFromForm(existingSavedAt) {
+    const rows = document.querySelectorAll('#invoiceBody tr');
+    const items = [];
+    rows.forEach(row => {
+      const inputs = row.querySelectorAll('input');
+      items.push({
+        desc: inputs[0].value,
+        qty: parseFloat(inputs[1].value) || 0,
+        price: parseFloat(inputs[2].value) || 0
+      });
+    });
+    const taxPct = parseFloat(document.getElementById('taxRateInput').value) || 0;
+    const subtotal = items.reduce((s, i) => s + i.qty * i.price, 0);
+    const tax = subtotal * (taxPct / 100);
+    const total = subtotal + tax;
+    return {
+      id: document.getElementById('invoiceNumber').value.trim(),
+      date: document.getElementById('invoiceDate').value,
+      due: document.getElementById('invoiceDue').value,
+      clientName: document.getElementById('clientName').value,
+      clientEmail: document.getElementById('clientEmail').value,
+      clientAddr: document.getElementById('clientAddress').value,
+      notes: document.getElementById('invoiceNotes').value,
+      currency: currentCurrency,
+      taxPct, items, subtotal, tax, total,
+      savedAt: existingSavedAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  /* ══════════ SAVE INVOICE (new only) ══════════ */
+  async function saveInvoice() {
+    const rows = document.querySelectorAll('#invoiceBody tr');
+    const hasItems = Array.from(rows).some(row => {
+      const inputs = row.querySelectorAll('input');
+      return inputs[0]?.value.trim() && parseFloat(inputs[2]?.value) > 0;
+    });
+    if (!hasItems) { showToast('Add at least one item with a description and price before saving.'); return; }
+    const clientName = document.getElementById('clientName').value.trim();
+    if (!clientName) { showToast('Please enter a client name before saving.'); return; }
+
+    const invoice = _buildInvoiceFromForm(null);
+    let invoices = [];
+    try {
+      const raw = await kvGet(KV_INVOICES);
+      invoices = raw ? JSON.parse(raw) : [];
+    } catch (e) { invoices = []; }
+
+    // ── Duplicate invoice number check ──
+    const dupId = invoices.find(inv => inv.id === invoice.id);
+    if (dupId) {
+      showToast(`Invoice number ${invoice.id} already exists. Please use a different number.`);
+      document.getElementById('invoiceNumber').focus();
+      document.getElementById('invoiceNumber').select();
+      return;
+    }
+
+    // ── Similarity check ──
+    const similar = _findSimilarInvoices(invoice, invoices);
+    if (similar.length > 0) {
+      _showSimilarDialog(similar, invoice, invoices);
+      return;
+    }
+
+    await _doSaveInvoice(invoice, invoices);
+  }
+
+  /* ── Similarity scoring ── */
+  function _similarity(a, b) {
+    // Normalise strings for comparison
+    const norm = s => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const clientScore = norm(a.clientName) === norm(b.clientName) ? 1 :
+      (norm(a.clientName).includes(norm(b.clientName)) || norm(b.clientName).includes(norm(a.clientName))) ? 0.7 : 0;
+    const aDescs = a.items.map(i => norm(i.desc));
+    const bDescs = b.items.map(i => norm(i.desc));
+    const itemMatches = aDescs.filter(d => bDescs.some(bd => bd === d || bd.includes(d) || d.includes(bd))).length;
+    const itemScore = Math.max(aDescs.length, bDescs.length) > 0
+      ? itemMatches / Math.max(aDescs.length, bDescs.length) : 0;
+    // Weight: client 50%, items 50%
+    return clientScore * 0.5 + itemScore * 0.5;
+  }
+
+  function _findSimilarInvoices(invoice, invoices) {
+    return invoices
+      .map((inv, idx) => ({ inv, idx, score: _similarity(invoice, inv) }))
+      .filter(({ score }) => score >= 0.75)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+  }
+
+  /* ── Similar invoice dialog ── */
+  function _showSimilarDialog(matches, pendingInvoice, allInvoices) {
+    const fmt = (inv) => {
+      const pct = inv.score >= 1 ? '100' : Math.round(inv.score * 100);
+      return `<div class="similar-match-item">
+        <div class="similar-match-info">
+          <span class="similar-match-id">${escHtml(inv.inv.id)}</span>
+          <span class="similar-match-client">${escHtml(inv.inv.clientName)}</span>
+          <span class="similar-match-date">${inv.inv.date || '—'}</span>
+        </div>
+        <span class="similar-match-score">${pct}% match</span>
+      </div>`;
+    };
+    document.getElementById('similarTitle').textContent =
+      matches.length === 1 ? 'Similar invoice found' : `${matches.length} similar invoices found`;
+    document.getElementById('similarSubtitle').textContent =
+      'This invoice looks similar to one already saved. Review before saving.';
+    document.getElementById('similarMatches').innerHTML = matches.map(fmt).join('');
+
+    const dialog = document.getElementById('similarDialog');
+    dialog.classList.add('visible');
+    document.body.style.overflow = 'hidden';
+
+    const cleanup = () => {
+      dialog.classList.remove('visible');
+      document.body.style.overflow = '';
+      ['similarCancel', 'similarViewBtn', 'similarSaveAnyway'].forEach(id => {
+        const el = document.getElementById(id);
+        el.replaceWith(el.cloneNode(true));
+      });
+    };
+
+    document.getElementById('similarCancel').addEventListener('click', cleanup);
+
+    document.getElementById('similarViewBtn').addEventListener('click', () => {
+      const targetId = matches[0].inv.id;
+      cleanup();
+      navigate('history');
+      setTimeout(async () => {
+        const raw = await kvGet(KV_INVOICES);
+        const list = raw ? JSON.parse(raw) : [];
+        const freshIdx = list.findIndex(i => i.id === targetId);
+        if (freshIdx !== -1) loadInvoiceToEditor(freshIdx);
+      }, 300);
+    });
+
+    document.getElementById('similarSaveAnyway').addEventListener('click', async () => {
+      cleanup();
+      await _doSaveInvoice(pendingInvoice, allInvoices);
+    });
+  }
+
+  /* ── Actual persist ── */
+  async function _doSaveInvoice(invoice, invoices) {
+    try {
+      invoices.unshift(invoice);
+      await kvSet(KV_INVOICES, JSON.stringify(invoices));
+      const rawCounter = await kvGet(KV_COUNTER);
+      await kvSet(KV_COUNTER, String(parseInt(rawCounter || '0') + 1));
+      showToast('Invoice saved successfully!');
+      await resolveInvoiceNumber();
+    } catch (e) {
+      console.error('Save error:', e);
+      showToast('Save failed. Please try again.');
+    }
+  }
+
+  /* ══════════ UPDATE INVOICE (edit existing) ══════════ */
+  async function updateInvoice() {
+    if (_editingIndex === null) {
+      showToast('No invoice selected for update.');
+      return;
+    }
+    try {
+      const raw = await kvGet(KV_INVOICES);
+      const invoices = raw ? JSON.parse(raw) : [];
+
+      if (_editingIndex < 0 || _editingIndex >= invoices.length) {
+        showToast('Invoice not found — it may have been deleted.');
+        setEditMode(null);
+        return;
+      }
+
+      const originalSavedAt = invoices[_editingIndex].savedAt;
+      const updated = _buildInvoiceFromForm(originalSavedAt);
+
+      invoices[_editingIndex] = updated;
+      await kvSet(KV_INVOICES, JSON.stringify(invoices));
+
+      showToast('Invoice updated successfully!');
+      const btnUpdate = document.getElementById('btnUpdateInvoice');
+      const origText = btnUpdate.innerHTML;
+      btnUpdate.innerHTML = '✓ Saved';
+      btnUpdate.disabled = true;
+      setTimeout(() => { btnUpdate.innerHTML = origText; btnUpdate.disabled = false; }, 2000);
+    } catch (e) {
+      console.error('Update error:', e);
+      showToast('Update failed. Please try again.');
+    }
+  }
+
+  /* ══════════ CLEAR INVOICE ══════════ */
+  function clearInvoice() {
+    document.getElementById('invoiceBody').innerHTML = '';
+    document.getElementById('clientName').value = '';
+    document.getElementById('clientEmail').value = '';
+    document.getElementById('clientAddress').value = '';
+    document.getElementById('invoiceNotes').value = '';
+    document.getElementById('magicInput').value = '';
+    document.getElementById('magicStatus').textContent = '';
+    document.getElementById('taxRateInput').value = DEFAULT_TAX_RATE;
+    addRow();
+    showToast('Invoice cleared.');
+  }
+
+  /* ══════════ OVERDUE HELPERS ══════════ */
+  function daysOverdue(dueDateStr) {
+    if (!dueDateStr) return null;
+    const due = new Date(dueDateStr);
+    const today = new Date();
+    due.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    return Math.floor((today - due) / (1000 * 60 * 60 * 24));
+  }
+
+  function getTone(days) {
+    if (days === null || days < 0) return { key: 'upcoming', label: 'Gentle Heads-up', emoji: '📅' };
+    if (days <= 7) return { key: 'friendly', label: 'Friendly Reminder', emoji: '🔔' };
+    if (days <= 13) return { key: 'gentle', label: 'Gentle Follow-up', emoji: '🔔' };
+    return { key: 'firm', label: 'Firm Follow-up', emoji: '⚠️' };
+  }
+
+  /* ══════════ REVENUE DASHBOARD ══════════ */
+  async function calculateTotalRevenue(invoices) {
+    let grandTotal = 0;
+    let overdueCount = 0;
+    const byCurrency = {};
+    invoices.forEach(inv => {
+      const sym = inv.currency || '$';
+      const total = parseFloat(inv.total) || 0;
+      grandTotal += convertToBase(total, sym);
+      byCurrency[sym] = (byCurrency[sym] || 0) + total;
+      const days = daysOverdue(inv.due);
+      if (days !== null && days > 0) overdueCount++;
+    });
+    const count = invoices.length;
+    const avg = count > 0 ? grandTotal / count : 0;
+    return { grandTotal, byCurrency, count, overdueCount, avg };
+  }
+
+  function renderRevenueDashboard(stats) {
+    const { grandTotal, byCurrency, count, overdueCount, avg } = stats;
+    const amountEl = document.getElementById('revenueTotalAmount');
+    const labelEl = document.getElementById('revenueBaseCcyLabel');
+    amountEl.classList.add('updating');
+    setTimeout(() => {
+      if (fxRatesOk) {
+        labelEl.textContent = `Converted to ${baseCurrency} · live rates`;
+        labelEl.style.color = 'rgba(255,255,255,0.38)';
+        labelEl.title = '';
+      } else {
+        labelEl.textContent = '⚠️ Live rates unavailable — amounts shown in original currencies';
+        labelEl.style.color = '#ffcc00';
+        labelEl.title = 'Both Frankfurter and open.er-api.com could not be reached.';
+      }
+      if (count === 0) {
+        amountEl.textContent = '—';
+        document.getElementById('revenueMultiCurrency').innerHTML = '';
+        document.getElementById('revenueInvoiceCount').textContent = '0';
+        document.getElementById('revenueAvgValue').textContent = '—';
+        const ov = document.getElementById('revenueOverdueCount');
+        ov.textContent = '0';
+        ov.className = 'revenue-stat-value no-overdue';
+        amountEl.classList.remove('updating');
+        return;
+      }
+      amountEl.textContent = fmtBase(grandTotal);
+      amountEl.classList.remove('updating');
+      const chipContainer = document.getElementById('revenueMultiCurrency');
+      const currencies = Object.keys(byCurrency);
+      if (currencies.length > 1 ||
+        (currencies.length === 1 && CCY_META[currencies[0]]?.code !== baseCurrency)) {
+        chipContainer.innerHTML = currencies.map(sym => {
+          const converted = convertToBase(byCurrency[sym], sym);
+          const isSame = CCY_META[sym]?.code === baseCurrency;
+          return `<span class="rev-currency-chip" title="${escHtml(sym)}${fmt(byCurrency[sym])}">
+            ${escHtml(sym)}${fmt(byCurrency[sym])}
+            ${!isSame && fxRatesOk
+              ? `<span class="chip-converted">≈ ${fmtBase(converted)}</span>`
+              : ''}
+          </span>`;
+        }).join('');
+      } else {
+        chipContainer.innerHTML = '';
+      }
+      document.getElementById('revenueInvoiceCount').textContent = count;
+      document.getElementById('revenueAvgValue').textContent = fmtBase(avg);
+      const overdueEl = document.getElementById('revenueOverdueCount');
+      overdueEl.textContent = overdueCount;
+      overdueEl.className = overdueCount === 0
+        ? 'revenue-stat-value no-overdue'
+        : 'revenue-stat-value';
+    }, 150);
+  }
+
+  /* ══════════ LOAD HISTORY ══════════ */
+  // Cached invoices for client-side search/filter
+  let _allInvoices = [];
+
+  async function loadHistory() {
+    const container = document.getElementById('historyList');
+    container.innerHTML = '<div class="empty-state"><span class="spinner"></span></div>';
+    try {
+      const rawInv = await kvGet(KV_INVOICES);
+      _allInvoices = rawInv ? JSON.parse(rawInv) : [];
+      if (!fxRatesOk) await fetchFxRates();
+      const stats = await calculateTotalRevenue(_allInvoices);
+      renderRevenueDashboard(stats);
+      // Show/hide search bar
+      const bar = document.getElementById('historySearchBar');
+      if (bar) bar.style.display = _allInvoices.length ? 'flex' : 'none';
+      renderHistoryList();
+    } catch (e) {
+      console.error('loadHistory error:', e);
+      const container = document.getElementById('historyList');
+      container.innerHTML = '<div class="empty-state"><p>Failed to load invoices.</p></div>';
+    }
+  }
+
+  function renderHistoryList() {
+    const container = document.getElementById('historyList');
+    const q = _historySearch.toLowerCase().trim();
+    const now = Date.now();
+    const ms30 = 30 * 24 * 60 * 60 * 1000;
+
+    // Filter
+    let filtered = _allInvoices.map((inv, idx) => ({ inv, idx })).filter(({ inv }) => {
+      if (_historyFilter === 'overdue') {
+        const d = daysOverdue(inv.due); return d !== null && d > 0;
+      }
+      if (_historyFilter === 'recent') {
+        const saved = new Date(inv.savedAt).getTime();
+        return (now - saved) <= ms30;
+      }
+      return true;
+    });
+
+    // Search
+    if (q) {
+      filtered = filtered.filter(({ inv }) =>
+        (inv.clientName || '').toLowerCase().includes(q) ||
+        (inv.id || '').toLowerCase().includes(q)
+      );
+    }
+
+    if (!_allInvoices.length) {
+      container.innerHTML = `<div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg><p>No saved invoices yet.</p></div>`;
+      return;
+    }
+
+    if (!filtered.length) {
+      container.innerHTML = `<div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="36" height="36">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
-      </div>
-      <h1 class="splash-title">EliteInvoice</h1>
-      <p class="splash-tagline">Professional invoicing, beautifully simple.</p>
+        <p>No invoices match your search.</p></div>`;
+      return;
+    }
 
-      <div class="splash-features">
-        <div class="splash-feature">
-          <div class="splash-feature-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-              <line x1="8" y1="13" x2="16" y2="13" />
-              <line x1="8" y1="17" x2="16" y2="17" />
-            </svg>
+    container.innerHTML = filtered.map(({ inv, idx }) => {
+      const days = daysOverdue(inv.due);
+      const tone = getTone(days);
+      const overdueLabel =
+        days === null ? 'No due date' :
+          days < 0 ? `Due in ${Math.abs(days)} day${Math.abs(days) !== 1 ? 's' : ''}` :
+            days === 0 ? 'Due today' :
+              `${days} day${days !== 1 ? 's' : ''} overdue`;
+      const invCode = CCY_META[inv.currency]?.code;
+      const showConverted = invCode && invCode !== baseCurrency && fxRatesOk;
+      const convertedStr = showConverted
+        ? `<span class="hc-converted">≈ ${fmtBase(convertToBase(inv.total, inv.currency))}</span>`
+        : '';
+      const timestampStr = inv.updatedAt
+        ? `Updated ${new Date(inv.updatedAt).toLocaleDateString()}`
+        : `Saved ${new Date(inv.savedAt).toLocaleDateString()}`;
+      return `
+        <div class="history-card" onclick="App.loadInvoiceToEditor(${idx})" role="button" tabindex="0" title="Click to view / edit">
+          <div class="history-card-info">
+            <div class="hc-number">${escHtml(inv.id)}</div>
+            <div class="hc-client">${escHtml(inv.clientName || 'Unknown Client')}</div>
+            <div class="hc-date">${timestampStr}</div>
+            <div class="hc-overdue-badge ${tone.key}">${tone.emoji} ${overdueLabel}</div>
           </div>
-          <div>
-            <div class="splash-feature-title">Create Invoices Fast</div>
-            <div class="splash-feature-desc">Build and send professional invoices in seconds</div>
+          <div class="history-card-amount-group">
+            <div class="history-card-amount">${escHtml(inv.currency)}${fmt(inv.total)}</div>
+            ${convertedStr}
           </div>
-        </div>
-        <div class="splash-feature">
-          <div class="splash-feature-icon ai">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-            </svg>
-          </div>
-          <div>
-            <div class="splash-feature-title">AI Magic Input</div>
-            <div class="splash-feature-desc">Paste any text — AI fills your entire invoice</div>
-          </div>
-        </div>
-        <div class="splash-feature">
-          <div class="splash-feature-icon privacy">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            </svg>
-          </div>
-          <div>
-            <div class="splash-feature-title">100% Private</div>
-            <div class="splash-feature-desc">Your data never leaves your browser</div>
-          </div>
-        </div>
-        <div class="splash-feature">
-          <div class="splash-feature-icon templates">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20">
-              <rect x="3" y="3" width="7" height="9" rx="1" />
-              <rect x="14" y="3" width="7" height="5" rx="1" />
-              <rect x="14" y="12" width="7" height="9" rx="1" />
-              <rect x="3" y="16" width="7" height="5" rx="1" />
-            </svg>
-          </div>
-          <div>
-            <div class="splash-feature-title">8 Beautiful Templates</div>
-            <div class="splash-feature-desc">Pick a style that matches your brand</div>
-          </div>
-        </div>
-      </div>
-
-      <button class="splash-cta" id="splashCta" onclick="EliteSplash.dismiss()">
-        <span>Get Started</span>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16">
-          <line x1="5" y1="12" x2="19" y2="12" />
-          <polyline points="12 5 19 12 12 19" />
-        </svg>
-      </button>
-      <p class="splash-note">No account required &nbsp;·&nbsp; Free forever</p>
-    </div>
-  </div>
-
-
-  <div class="sidebar-overlay" id="sidebarOverlay" onclick="App.closeSidebar()"></div>
-
-
-  <!-- Mobile top blur strip -->
-  <div class="mobile-top-blur" id="mobileTopBlur"></div>
-
-  <!-- Mobile floating brand -->
-  <div class="mobile-brand-pill" id="mobileBrandPill">
-    <svg width="20" height="20" viewBox="0 0 28 28" fill="none">
-      <rect width="28" height="28" rx="7" fill="#0071e3"/>
-      <path d="M7 20L11 8H14L17 16L19 11H22L18 20H15L12 12L10 20H7Z" fill="white"/>
-    </svg>
-    <span>EliteInvoice</span>
-  </div>
-
-  <button class="hamburger" id="hamburgerBtn" onclick="App.toggleSidebar()" aria-label="Open menu">
-    <span></span><span></span><span></span>
-  </button>
-
-  <!-- ═══════════════════════ SIDEBAR ═══════════════════════ -->
-  <aside class="sidebar" id="sidebar">
-    <div class="sidebar-brand">
-      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-        <rect width="28" height="28" rx="7" fill="#0071e3" />
-        <path d="M7 20L11 8H14L17 16L19 11H22L18 20H15L12 12L10 20H7Z" fill="white" />
-      </svg>
-      <span>EliteInvoice</span>
-    </div>
-    <nav class="sidebar-nav">
-      <button class="nav-item active" data-view="invoice" onclick="App.navigate('invoice')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-          <line x1="8" y1="13" x2="16" y2="13" />
-          <line x1="8" y1="17" x2="16" y2="17" />
-        </svg>
-        New Invoice
-      </button>
-      <button class="nav-item" data-view="history" onclick="App.navigate('history')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <polyline points="12 8 12 12 14 14" />
-          <path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5" />
-        </svg>
-        Saved Invoices
-      </button>
-      <button class="nav-item" data-view="templates" onclick="App.navigate('templates')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <rect x="3" y="3" width="7" height="9" rx="1" />
-          <rect x="14" y="3" width="7" height="5" rx="1" />
-          <rect x="14" y="12" width="7" height="9" rx="1" />
-          <rect x="3" y="16" width="7" height="5" rx="1" />
-        </svg>
-        Templates
-      </button>
-      <button class="nav-item" data-view="settings" onclick="App.navigate('settings')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <circle cx="12" cy="12" r="3" />
-          <path
-            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-        </svg>
-        Settings
-      </button>
-      <button class="nav-item" data-view="help" onclick="App.navigate('help')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <circle cx="12" cy="12" r="10" />
-          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-          <line x1="12" y1="17" x2="12.01" y2="17" stroke-linecap="round" stroke-width="2.5" />
-        </svg>
-        Help
-      </button>
-    </nav>
-    <div class="sidebar-footer">
-      <div class="status-dot" id="statusDot"></div>
-      <span id="statusText">Initialising…</span>
-    </div>
-  </aside>
-
-  <!-- ═══════════════════════ PAGE WRAPPER ═══════════════════════ -->
-  <div class="page-wrapper">
-    <main class="main-content">
-
-      <!-- ─── VIEW: NEW INVOICE ─── -->
-      <section class="view active" id="view-invoice">
-        <header class="view-header">
-          <div class="view-title-group">
-            <div class="view-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="22" height="22">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-                <line x1="8" y1="13" x2="16" y2="13" />
-                <line x1="8" y1="17" x2="16" y2="17" />
+          <div class="history-card-actions" onclick="event.stopPropagation()">
+            <button class="btn-draft-email" onclick="App.openEmailModal(${idx})" title="Draft follow-up email">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="13" height="13">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                <polyline points="22,6 12,13 2,6"/>
               </svg>
-            </div>
-            <div>
-              <h1>New Invoice</h1>
-              <p class="subtitle">Compose or use AI Magic Input to auto-fill.</p>
-            </div>
-          </div>
-          <div class="header-actions">
-
-            <select id="currencySelect" onchange="App.setCurrency(this.value)" title="Invoice Currency">
-              <option value="$">🇺🇸 $ USD</option>
-              <option value="€">🇪🇺 € EUR</option>
-              <option value="£">🇬🇧 £ GBP</option>
-              <option value="₱">🇵🇭 ₱ PHP</option>
-              <option value="¥">🇯🇵 ¥ JPY</option>
-              <option value="A$">🇦🇺 A$ AUD</option>
-              <option value="C$">🇨🇦 C$ CAD</option>
-              <option value="S$">🇸🇬 S$ SGD</option>
-              <option value="HK$">🇭🇰 HK$ HKD</option>
-              <option value="NZ$">🇳🇿 NZ$ NZD</option>
-              <option value="₩">🇰🇷 ₩ KRW</option>
-              <option value="₹">🇮🇳 ₹ INR</option>
-              <option value="R$">🇧🇷 R$ BRL</option>
-              <option value="Fr">🇨🇭 Fr CHF</option>
-              <option value="kr">🇸🇪 kr SEK</option>
-              <option value="Mex$">🇲🇽 Mex$ MXN</option>
-              <option value="د.إ">🇦🇪 د.إ AED</option>
-              <option value="SAR">🇸🇦 SAR</option>
-              <option value="zł">🇵🇱 zł PLN</option>
-              <option value="Kč">🇨🇿 Kč CZK</option>
-            </select>
-
-            <button class="btn-secondary" onclick="App.newInvoice()">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              New
+              Draft Email
             </button>
-
-            <button class="btn-secondary" onclick="App.clearInvoice()">Clear</button>
-
-            <!-- Save Invoice — shown in new-invoice mode -->
-            <button class="btn-primary" id="btnSaveInvoice" onclick="App.saveInvoice()">
-              Save Invoice
-            </button>
-
-            <!-- Update Invoice — shown only in edit mode -->
-            <button class="btn-update" id="btnUpdateInvoice" onclick="App.updateInvoice()" style="display:none">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                <polyline points="17 21 17 13 7 13 7 21" />
-                <polyline points="7 3 7 8 15 8" />
-              </svg>
-              Update Invoice
-            </button>
-
-            <!-- Cancel Edit — shown only in edit mode -->
-            <button class="btn-cancel-edit" id="btnCancelEdit" onclick="App.cancelEdit()" style="display:none">
-              Cancel Edit
-            </button>
-
-            <button class="btn-ghost" onclick="window.print()">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16">
-                <polyline points="6 9 6 2 18 2 18 9" />
-                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-                <rect x="6" y="14" width="12" height="8" />
-              </svg>
-              Print
-            </button>
-
+            <button class="btn-load" onclick="App.loadInvoiceToEditor(${idx})">Edit</button>
+            <button class="btn-del-invoice" onclick="App.deleteInvoice(${idx})">Delete</button>
           </div>
-        </header>
-
-        <!-- AI Magic Input -->
-        <div class="magic-card">
-          <div class="magic-header">
-            <div class="magic-badge">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="14" height="14">
-                <polygon
-                  points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-              </svg>
-              AI Magic Input
-            </div>
-            <span class="magic-hint">Powered by Cloudflare Workers AI</span>
-          </div>
-          <textarea id="magicInput"
-            placeholder="Describe your invoice naturally…&#10;e.g. '3 hours of web design at $150 each, 1 domain renewal for $15, hosting plan £99'"
-            rows="3"></textarea>
-          <div class="magic-footer">
-            <div id="magicStatus" class="magic-status"></div>
-            <button class="btn-ai" onclick="App.runMagicParse()" id="magicBtn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15">
-                <line x1="22" y1="2" x2="11" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
-              Parse with AI
-            </button>
-          </div>
-        </div>
-
-        <!-- Invoice Document -->
-        <div class="invoice-document" id="invoiceDocument">
-          <div class="invoice-print-bar" aria-hidden="true"></div>
-          <div class="invoice-top">
-            <div class="invoice-brand">
-              <img id="invoiceLogo" class="invoice-logo" src="" alt="" style="display:none" />
-              <div>
-                <div class="invoice-biz-name" id="invoiceBizName">Your Business Name</div>
-                <div class="invoice-biz-address" id="invoiceBizAddress">123 Main Street, City, Country</div>
-                <div class="invoice-biz-contact" id="invoiceBizContact"></div>
-              </div>
-            </div>
-            <div class="invoice-meta">
-              <div class="invoice-title-block">
-                <span class="invoice-title-label">INVOICE</span>
-                <input type="text" class="invoice-number-input" id="invoiceNumber" value="#INV-0001" spellcheck="false"
-                  autocomplete="off" />
-              </div>
-              <div class="invoice-dates">
-                <div class="date-row">
-                  <span>Date</span>
-                  <input type="date" id="invoiceDate" class="date-input" />
-                </div>
-                <div class="date-row">
-                  <span>Due Date</span>
-                  <input type="date" id="invoiceDue" class="date-input" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="invoice-bill-to">
-            <div class="bill-label">BILL TO</div>
-            <div class="bill-fields">
-              <input type="text" id="clientName" class="bill-input" placeholder="Client Name" />
-              <input type="text" id="clientEmail" class="bill-input" placeholder="client@email.com" />
-              <input type="text" id="clientAddress" class="bill-input bill-input-wide" placeholder="Client Address" />
-            </div>
-          </div>
-
-          <div class="table-wrap">
-            <table class="invoice-table" id="invoiceTable">
-              <thead>
-                <tr>
-                  <th class="col-desc">Description</th>
-                  <th class="col-qty">Qty</th>
-                  <th class="col-price">Unit Price</th>
-                  <th class="col-total">Total</th>
-                  <th class="col-del no-print"></th>
-                </tr>
-              </thead>
-              <tbody id="invoiceBody"></tbody>
-            </table>
-          </div>
-
-          <div class="table-actions no-print">
-            <button class="btn-add-row" onclick="App.addRow()">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              Add Line Item
-            </button>
-          </div>
-
-          <div class="totals-block">
-            <div class="totals-table">
-              <div class="totals-row">
-                <span>Subtotal</span>
-                <span id="subtotalVal">—</span>
-              </div>
-              <div class="totals-row">
-                <span>Tax (<input type="number" id="taxRateInput" value="10" min="0" max="100" step="0.5"
-                    oninput="App.updateTotals()" class="tax-rate-input" />%)</span>
-                <span id="taxVal">—</span>
-              </div>
-              <div class="totals-row totals-grand">
-                <span>Total Due</span>
-                <span id="totalVal">—</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="invoice-notes">
-            <div class="notes-label">Notes</div>
-            <textarea id="invoiceNotes" class="notes-input" placeholder="Payment terms, thank you note, bank details…"
-              rows="2"></textarea>
-          </div>
-
-          <!-- Edit mode banner — visible only inside .is-editing -->
-          <div class="edit-mode-banner no-print">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="14" height="14">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-            </svg>
-            Editing existing invoice — changes will overwrite the saved record.
-          </div>
-        </div>
-      </section>
-
-      <!-- ─── VIEW: SAVED INVOICES ─── -->
-      <section class="view" id="view-history">
-        <header class="view-header">
-          <div class="view-title-group">
-            <div class="view-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="22" height="22">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-                <line x1="8" y1="13" x2="16" y2="13" />
-                <line x1="8" y1="17" x2="16" y2="17" />
-                <line x1="3" y1="3" x2="6" y2="3" />
-              </svg>
-            </div>
-            <div>
-              <h1>Saved Invoices</h1>
-              <p class="subtitle">All your past invoices, stored locally in your browser.</p>
-            </div>
-          </div>
-          <div class="history-actions">
-            <button class="btn-secondary" onclick="App.exportInvoices()" title="Download all invoices as a backup file">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              Export
-            </button>
-            <label class="btn-secondary" title="Restore invoices from a backup file"
-              style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="17 8 12 3 7 8" />
-                <line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
-              Import
-              <input type="file" accept=".json" style="display:none" onchange="App.importInvoices(this)">
-            </label>
-            <button class="btn-secondary" onclick="App.loadHistory()">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15">
-                <polyline points="23 4 23 10 17 10" />
-                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-              </svg>
-              Refresh
-            </button>
-          </div>
-        </header>
-
-        <!-- ── REVENUE DASHBOARD ── -->
-        <div class="revenue-dashboard" id="revenueDashboard">
-          <div class="revenue-dashboard-inner">
-            <div class="revenue-main-stat">
-              <div class="revenue-label">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="14" height="14">
-                  <line x1="12" y1="1" x2="12" y2="23" />
-                  <path d="M17 5H9.5a3.5 3.5 0 1 0 0 7h5a3.5 3.5 0 1 1 0 7H6" />
-                </svg>
-                Total Revenue
-              </div>
-              <div class="revenue-amount" id="revenueTotalAmount">—</div>
-              <div class="revenue-base-label" id="revenueBaseCcyLabel">Converted to USD · live rates</div>
-              <div class="revenue-multicurrency" id="revenueMultiCurrency"></div>
-            </div>
-            <div class="revenue-stats-row">
-              <div class="revenue-stat-pill">
-                <span class="revenue-stat-label">Invoices</span>
-                <span class="revenue-stat-value" id="revenueInvoiceCount">0</span>
-              </div>
-              <div class="revenue-stat-pill">
-                <span class="revenue-stat-label">Avg. Value</span>
-                <span class="revenue-stat-value" id="revenueAvgValue">—</span>
-              </div>
-              <div class="revenue-stat-pill overdue-pill">
-                <span class="revenue-stat-label">Overdue</span>
-                <span class="revenue-stat-value" id="revenueOverdueCount">0</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-
-        <!-- ── SEARCH & FILTER ── -->
-        <div class="history-search-bar" id="historySearchBar">
-          <div class="history-search-input-wrap">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15" class="history-search-icon">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input type="text" id="historySearchInput" class="history-search-input" placeholder="Search by client or invoice number…" oninput="App.filterHistory()">
-            <button class="history-search-clear" id="historySearchClear" onclick="App.clearHistorySearch()" style="display:none" title="Clear">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="13" height="13"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-          </div>
-          <div class="history-filter-pills">
-            <button class="history-pill active" data-filter="all"    onclick="App.setHistoryFilter('all')">All</button>
-            <button class="history-pill"         data-filter="overdue" onclick="App.setHistoryFilter('overdue')">Overdue</button>
-            <button class="history-pill"         data-filter="recent"  onclick="App.setHistoryFilter('recent')">Recent 30d</button>
-          </div>
-        </div>
-
-        <div id="historyList" class="history-list">
-          <div class="empty-state">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-            </svg>
-            <p>No saved invoices yet.</p>
-          </div>
-        </div>
-      </section>
-
-      <!-- ─── VIEW: SETTINGS ─── -->
-      <section class="view" id="view-settings">
-        <header class="view-header">
-          <div class="view-title-group">
-            <div class="view-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="22" height="22">
-                <circle cx="12" cy="12" r="3" />
-                <path
-                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-              </svg>
-            </div>
-            <div>
-              <h1>Settings</h1>
-              <p class="subtitle">Customize your business profile and branding.</p>
-            </div>
-          </div>
-          <button class="btn-secondary" onclick="App.toggleTheme()" id="themeToggleBtn">
-            <span class="theme-icon-light">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15">
-                <circle cx="12" cy="12" r="5" />
-                <line x1="12" y1="1" x2="12" y2="3" />
-                <line x1="12" y1="21" x2="12" y2="23" />
-                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-                <line x1="1" y1="12" x2="3" y2="12" />
-                <line x1="21" y1="12" x2="23" y2="12" />
-                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-              </svg>
-              Light Mode
-            </span>
-            <span class="theme-icon-dark">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15">
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-              </svg>
-              Dark Mode
-            </span>
-          </button>
-        </header>
-
-        <div class="settings-card">
-          <h2 class="settings-section-title">Business Profile</h2>
-
-          <div class="field-group">
-            <label class="field-label">Business Name</label>
-            <input type="text" id="settingBizName" class="field-input" placeholder="Acme Design Studio" />
-          </div>
-          <div class="field-group">
-            <label class="field-label">Business Address</label>
-            <textarea id="settingBizAddress" class="field-input field-textarea"
-              placeholder="123 Main St, Makati City, Philippines" rows="2"></textarea>
-          </div>
-
-          <div class="settings-divider"><span>Optional Contact Info</span></div>
-
-          <div class="field-row-two">
-            <div class="field-group">
-              <label class="field-label">Phone <span class="field-optional">optional</span></label>
-              <input type="tel" id="settingPhone" class="field-input" placeholder="+63 912 345 6789" />
-            </div>
-            <div class="field-group">
-              <label class="field-label">Email <span class="field-optional">optional</span></label>
-              <input type="email" id="settingEmail" class="field-input" placeholder="hello@yourbusiness.com" />
-            </div>
-          </div>
-
-          <div class="settings-divider"><span>Social Links</span></div>
-
-          <div class="field-row-two">
-            <div class="field-group">
-              <label class="field-label">
-                <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"
-                  style="vertical-align:-1px;margin-right:3px">
-                  <path
-                    d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
-                </svg>
-                LinkedIn <span class="field-optional">optional</span>
-              </label>
-              <input type="url" id="settingLinkedin" class="field-input"
-                placeholder="https://linkedin.com/in/yourname" />
-            </div>
-            <div class="field-group">
-              <label class="field-label">
-                <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"
-                  style="vertical-align:-1px;margin-right:3px">
-                  <path
-                    d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z" />
-                </svg>
-                Instagram <span class="field-optional">optional</span>
-              </label>
-              <input type="url" id="settingInstagram" class="field-input"
-                placeholder="https://instagram.com/yourhandle" />
-            </div>
-          </div>
-
-          <div class="field-row-two">
-            <div class="field-group">
-              <label class="field-label">
-                <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"
-                  style="vertical-align:-1px;margin-right:3px">
-                  <path
-                    d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.261 5.636 5.902-5.636zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                </svg>
-                X / Twitter <span class="field-optional">optional</span>
-              </label>
-              <input type="url" id="settingTwitter" class="field-input" placeholder="https://x.com/yourhandle" />
-            </div>
-            <div class="field-group">
-              <label class="field-label">
-                <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"
-                  style="vertical-align:-1px;margin-right:3px">
-                  <path
-                    d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" />
-                </svg>
-                GitHub <span class="field-optional">optional</span>
-              </label>
-              <input type="url" id="settingGithub" class="field-input" placeholder="https://github.com/yourhandle" />
-            </div>
-          </div>
-
-          <!-- ── BASE CURRENCY ── -->
-          <div class="settings-divider"><span>Revenue Dashboard</span></div>
-
-          <div class="field-group">
-            <label class="field-label">
-              Base Currency
-              <span class="field-optional">used for Total Revenue conversion</span>
-            </label>
-            <div class="base-ccy-row">
-              <select id="baseCurrencySelect" class="field-input base-ccy-select">
-                <option value="USD">🇺🇸 USD — US Dollar</option>
-                <option value="EUR">🇪🇺 EUR — Euro</option>
-                <option value="GBP">🇬🇧 GBP — British Pound</option>
-                <option value="PHP">🇵🇭 PHP — Philippine Peso</option>
-                <option value="JPY">🇯🇵 JPY — Japanese Yen</option>
-                <option value="AUD">🇦🇺 AUD — Australian Dollar</option>
-                <option value="CAD">🇨🇦 CAD — Canadian Dollar</option>
-                <option value="SGD">🇸🇬 SGD — Singapore Dollar</option>
-                <option value="HKD">🇭🇰 HKD — Hong Kong Dollar</option>
-                <option value="NZD">🇳🇿 NZD — New Zealand Dollar</option>
-                <option value="KRW">🇰🇷 KRW — South Korean Won</option>
-                <option value="INR">🇮🇳 INR — Indian Rupee</option>
-                <option value="BRL">🇧🇷 BRL — Brazilian Real</option>
-                <option value="CHF">🇨🇭 CHF — Swiss Franc</option>
-                <option value="SEK">🇸🇪 SEK — Swedish Krona</option>
-                <option value="MXN">🇲🇽 MXN — Mexican Peso</option>
-                <option value="AED">🇦🇪 AED — UAE Dirham</option>
-                <option value="SAR">🇸🇦 SAR — Saudi Riyal</option>
-                <option value="PLN">🇵🇱 PLN — Polish Zloty</option>
-                <option value="CZK">🇨🇿 CZK — Czech Koruna</option>
-              </select>
-              <button class="btn-primary base-ccy-save-btn"
-                onclick="App.saveBaseCurrency(document.getElementById('baseCurrencySelect').value)">
-                Apply
-              </button>
-            </div>
-            <p class="base-ccy-hint">
-              Live rates via
-              <a href="https://www.frankfurter.app" target="_blank" rel="noopener">Frankfurter</a>
-              with
-              <a href="https://open.er-api.com" target="_blank" rel="noopener">open.er-api.com</a>
-              as fallback — refreshed each time you open Saved Invoices.
-            </p>
-          </div>
-
-          <div class="settings-divider"><span>Branding</span></div>
-
-          <div class="field-group">
-            <label class="field-label">Logo Upload</label>
-            <div class="logo-upload-area" id="logoUploadArea"
-              onclick="document.getElementById('logoFileInput').click()">
-              <img id="settingsLogoPreview" src="" alt="" style="display:none;max-height:72px;border-radius:8px;" />
-              <div id="logoPlaceholder">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="28" height="28">
-                  <rect x="3" y="3" width="18" height="18" rx="3" />
-                  <circle cx="8.5" cy="8.5" r="1.5" />
-                  <polyline points="21 15 16 10 5 21" />
-                </svg>
-                <span>Click to upload logo</span>
-                <small>PNG, JPG, SVG — max 2MB</small>
-              </div>
-            </div>
-            <input type="file" id="logoFileInput" accept="image/*" style="display:none"
-              onchange="App.uploadLogo(this)" />
-            <div id="logoUploadStatus" class="upload-status"></div>
-          </div>
-
-          <button class="btn-primary settings-save-btn" onclick="App.saveSettings()">
-            Save Settings
-          </button>
-          <div id="settingsSaveStatus" class="save-status"></div>
-        </div>
-      </section>
-
-
-      <!-- ═══════════════════════ HELP VIEW ═══════════════════════ -->
-
-      <!-- ═══════════════════════ TEMPLATES VIEW ═══════════════════════ -->
-      <section class="view" id="view-templates">
-        <header class="view-header">
-          <div class="view-title-group">
-            <div class="view-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="22" height="22">
-                <rect x="3" y="3" width="7" height="9" rx="1" />
-                <rect x="14" y="3" width="7" height="5" rx="1" />
-                <rect x="14" y="12" width="7" height="9" rx="1" />
-                <rect x="3" y="16" width="7" height="5" rx="1" />
-              </svg>
-            </div>
-            <div>
-              <h1>Invoice Templates</h1>
-              <p class="subtitle">Choose a design for your invoice. Applied instantly to print.</p>
-            </div>
-          </div>
-        </header>
-
-        <div class="templates-grid">
-
-          <!-- Classic -->
-          <div class="template-card" data-tpl="classic" onclick="App.selectTemplate('classic')">
-            <div class="template-preview tpl-classic">
-              <div class="tpl-prev-bar"></div>
-              <div class="tpl-prev-header">
-                <div class="tpl-prev-biz">
-                  <div class="tpl-prev-logo"></div>
-                  <div>
-                    <div class="tpl-prev-bizname"></div>
-                    <div class="tpl-prev-line sm"></div>
-                  </div>
-                </div>
-                <div class="tpl-prev-meta">
-                  <div class="tpl-prev-invnum"></div>
-                  <div class="tpl-prev-line sm"></div>
-                  <div class="tpl-prev-line sm"></div>
-                </div>
-              </div>
-              <div class="tpl-prev-billtobg">
-                <div class="tpl-prev-line"></div>
-                <div class="tpl-prev-line sm"></div>
-              </div>
-              <div class="tpl-prev-tablehead"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-total"></div>
-            </div>
-            <div class="template-info">
-              <div class="template-name">Classic</div>
-              <div class="template-desc">Clean and professional. Blue accents, gradient header bar.</div>
-            </div>
-            <div class="template-check">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </div>
-          </div>
-
-          <!-- Minimal -->
-          <div class="template-card" data-tpl="minimal" onclick="App.selectTemplate('minimal')">
-            <div class="template-preview tpl-minimal">
-              <div class="tpl-prev-header">
-                <div class="tpl-prev-biz">
-                  <div>
-                    <div class="tpl-prev-bizname dark"></div>
-                    <div class="tpl-prev-line sm"></div>
-                  </div>
-                </div>
-                <div class="tpl-prev-meta">
-                  <div class="tpl-prev-invnum dark"></div>
-                  <div class="tpl-prev-line sm"></div>
-                </div>
-              </div>
-              <div class="tpl-prev-divider"></div>
-              <div class="tpl-prev-billtobg minimal">
-                <div class="tpl-prev-line"></div>
-                <div class="tpl-prev-line sm"></div>
-              </div>
-              <div class="tpl-prev-tablehead minimal"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-total minimal"></div>
-            </div>
-            <div class="template-info">
-              <div class="template-name">Minimal</div>
-              <div class="template-desc">No colour, no noise. Pure typography and whitespace.</div>
-            </div>
-            <div class="template-check">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </div>
-          </div>
-
-          <!-- Bold -->
-          <div class="template-card" data-tpl="bold" onclick="App.selectTemplate('bold')">
-            <div class="template-preview tpl-bold">
-              <div class="tpl-prev-header-band">
-                <div class="tpl-prev-biz light">
-                  <div class="tpl-prev-logo light"></div>
-                  <div>
-                    <div class="tpl-prev-bizname light"></div>
-                    <div class="tpl-prev-line sm light"></div>
-                  </div>
-                </div>
-                <div class="tpl-prev-invnum-bold">INV</div>
-              </div>
-              <div class="tpl-prev-billtobg bold">
-                <div class="tpl-prev-line"></div>
-                <div class="tpl-prev-line sm"></div>
-              </div>
-              <div class="tpl-prev-tablehead bold"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-total bold"></div>
-            </div>
-            <div class="template-info">
-              <div class="template-name">Bold</div>
-              <div class="template-desc">Dark header band, high contrast. Makes an impression.</div>
-            </div>
-            <div class="template-check">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </div>
-          </div>
-
-          <!-- Slate -->
-          <div class="template-card" data-tpl="slate" onclick="App.selectTemplate('slate')">
-            <div class="template-preview tpl-slate">
-              <div class="tpl-prev-slate-top">
-                <div class="tpl-prev-bizname slate"></div>
-                <div class="tpl-prev-line sm slate"></div>
-                <div class="tpl-prev-line sm slate" style="width:55%"></div>
-              </div>
-              <div class="tpl-prev-slate-meta">
-                <div class="tpl-prev-invnum slate"></div>
-                <div class="tpl-prev-line sm"></div>
-                <div class="tpl-prev-line sm"></div>
-              </div>
-              <div class="tpl-prev-billtobg slate">
-                <div class="tpl-prev-line"></div>
-                <div class="tpl-prev-line sm"></div>
-              </div>
-              <div class="tpl-prev-tablehead slate"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-total slate"></div>
-            </div>
-            <div class="template-info">
-              <div class="template-name">Slate</div>
-              <div class="template-desc">Earthy tones with a left-aligned biz block. Warm and modern.</div>
-            </div>
-            <div class="template-check">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </div>
-          </div>
-
-          <!-- Ocean -->
-          <div class="template-card" data-tpl="ocean" onclick="App.selectTemplate('ocean')">
-            <div class="template-preview tpl-ocean">
-              <div class="tpl-prev-bar ocean"></div>
-              <div class="tpl-prev-header">
-                <div class="tpl-prev-biz">
-                  <div class="tpl-prev-logo ocean"></div>
-                  <div>
-                    <div class="tpl-prev-bizname ocean"></div>
-                    <div class="tpl-prev-line sm"></div>
-                  </div>
-                </div>
-                <div class="tpl-prev-meta">
-                  <div class="tpl-prev-invnum ocean"></div>
-                  <div class="tpl-prev-line sm"></div>
-                  <div class="tpl-prev-line sm"></div>
-                </div>
-              </div>
-              <div class="tpl-prev-billtobg ocean"></div>
-              <div class="tpl-prev-tablehead ocean"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-total ocean"></div>
-            </div>
-            <div class="template-info">
-              <div class="template-name">Ocean</div>
-              <div class="template-desc">Cool teal tones with a gradient bar. Fresh and modern.</div>
-            </div>
-            <div class="template-check">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </div>
-          </div>
-
-          <!-- Rose -->
-          <div class="template-card" data-tpl="rose" onclick="App.selectTemplate('rose')">
-            <div class="template-preview tpl-rose">
-              <div class="tpl-prev-header-band rose">
-                <div class="tpl-prev-biz light">
-                  <div class="tpl-prev-logo light"></div>
-                  <div>
-                    <div class="tpl-prev-bizname light"></div>
-                    <div class="tpl-prev-line sm light"></div>
-                  </div>
-                </div>
-                <div class="tpl-prev-invnum-bold rose">INV</div>
-              </div>
-              <div class="tpl-prev-billtobg rose"></div>
-              <div class="tpl-prev-tablehead rose"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-total rose"></div>
-            </div>
-            <div class="template-info">
-              <div class="template-name">Rose</div>
-              <div class="template-desc">Warm rose header with burgundy accents. Elegant and bold.</div>
-            </div>
-            <div class="template-check">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </div>
-          </div>
-
-          <!-- Midnight -->
-          <div class="template-card" data-tpl="midnight" onclick="App.selectTemplate('midnight')">
-            <div class="template-preview tpl-midnight">
-              <div class="tpl-prev-header-band midnight">
-                <div class="tpl-prev-biz light">
-                  <div class="tpl-prev-logo midnight-logo"></div>
-                  <div>
-                    <div class="tpl-prev-bizname light"></div>
-                    <div class="tpl-prev-line sm light"></div>
-                  </div>
-                </div>
-                <div class="tpl-prev-invnum-bold midnight">INV</div>
-              </div>
-              <div class="tpl-prev-billtobg midnight"></div>
-              <div class="tpl-prev-tablehead midnight"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-total midnight"></div>
-            </div>
-            <div class="template-info">
-              <div class="template-name">Midnight</div>
-              <div class="template-desc">Deep navy header with gold accents. Prestigious and refined.</div>
-            </div>
-            <div class="template-check">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </div>
-          </div>
-
-          <!-- Forest -->
-          <div class="template-card" data-tpl="forest" onclick="App.selectTemplate('forest')">
-            <div class="template-preview tpl-forest">
-              <div class="tpl-prev-forest-top">
-                <div class="tpl-prev-bizname forest"></div>
-                <div class="tpl-prev-line sm forest"></div>
-              </div>
-              <div class="tpl-prev-slate-meta">
-                <div class="tpl-prev-invnum forest"></div>
-                <div class="tpl-prev-line sm"></div>
-                <div class="tpl-prev-line sm"></div>
-              </div>
-              <div class="tpl-prev-billtobg forest"></div>
-              <div class="tpl-prev-tablehead forest"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-row"></div>
-              <div class="tpl-prev-total forest"></div>
-            </div>
-            <div class="template-info">
-              <div class="template-name">Forest</div>
-              <div class="template-desc">Deep green tones with earthy warmth. Grounded and trustworthy.</div>
-            </div>
-            <div class="template-check">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </div>
-          </div>
-
-        </div>
-
-        <p class="templates-note">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="13" height="13"
-            style="flex-shrink:0;margin-top:2px">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="8" x2="12" y2="12" />
-            <line x1="12" y1="16" x2="12.01" y2="16" />
-          </svg>
-          Template choice is saved automatically and applies to print / PDF output. Your invoice content is never
-          affected.
-        </p>
-
-      </section>
-
-      <section class="view" id="view-help">
-        <header class="view-header">
-          <div class="view-title-group">
-            <div class="view-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="22" height="22">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                <line x1="12" y1="17" x2="12.01" y2="17" stroke-linecap="round" stroke-width="2.5" />
-              </svg>
-            </div>
-            <div>
-              <h1>Help &amp; Guide</h1>
-              <p class="subtitle">Everything you need to know about using EliteInvoice.</p>
-            </div>
-          </div>
-        </header>
-
-        <!-- Quick Start Cards -->
-        <div class="help-quick-cards">
-          <div class="help-quick-card">
-            <div class="help-quick-icon" style="background:#e8f4ff;color:#0071e3;">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-              </svg>
-            </div>
-            <div>
-              <div class="help-quick-title">Create Invoice</div>
-              <div class="help-quick-desc">Fill in client details, add line items, save</div>
-            </div>
-          </div>
-          <div class="help-quick-card">
-            <div class="help-quick-icon" style="background:#edfaf1;color:#1a7f37;">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-              </svg>
-            </div>
-            <div>
-              <div class="help-quick-title">AI Magic Input</div>
-              <div class="help-quick-desc">Paste text, let AI auto-fill everything</div>
-            </div>
-          </div>
-          <div class="help-quick-card">
-            <div class="help-quick-icon" style="background:#fff3e0;color:#e65100;">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </div>
-            <div>
-              <div class="help-quick-title">Export &amp; Backup</div>
-              <div class="help-quick-desc">Download your invoices as a JSON backup</div>
-            </div>
-          </div>
-          <div class="help-quick-card">
-            <div class="help-quick-icon" style="background:#f3e8ff;color:#7c3aed;">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20">
-                <rect x="2" y="3" width="20" height="14" rx="2" />
-                <line x1="8" y1="21" x2="16" y2="21" />
-                <line x1="12" y1="17" x2="12" y2="21" />
-              </svg>
-            </div>
-            <div>
-              <div class="help-quick-title">Print / PDF</div>
-              <div class="help-quick-desc">Print any invoice directly from the browser</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- FAQ Accordion -->
-        <div class="help-section-title">Frequently Asked Questions</div>
-        <div class="help-faq">
-
-          <div class="faq-item">
-            <button class="faq-question" onclick="toggleFaq(this)">
-              <span>How do I create my first invoice?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
-                height="16">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-            <div class="faq-answer">
-              <p>Go to <strong>New Invoice</strong> from the sidebar. Fill in your client's name, email, and address.
-                Add line items by clicking <strong>+ Add Row</strong> — each row has a description, quantity, and unit
-                price. The total updates automatically. When ready, click <strong>Save Invoice</strong>.</p>
-            </div>
-          </div>
-
-          <div class="faq-item">
-            <button class="faq-question" onclick="toggleFaq(this)">
-              <span>What is AI Magic Input and how does it work?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
-                height="16">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-            <div class="faq-answer">
-              <p>AI Magic Input lets you describe your invoice in plain text and have it auto-filled. For example, paste
-                something like: <em>"Invoice for Acme Corp, 3 hours of web design at $150/hr and 1 domain registration
-                  for $15. Due in 30 days."</em> — and the AI will extract the client, line items, amounts, and due date
-                automatically. Click the <strong>✦ Magic</strong> button at the top of the New Invoice page to expand
-                it.</p>
-            </div>
-          </div>
-
-          <div class="faq-item">
-            <button class="faq-question" onclick="toggleFaq(this)">
-              <span>Where is my data stored? Is it safe?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
-                height="16">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-            <div class="faq-answer">
-              <p>All your invoices and settings are stored locally in your browser's <strong>localStorage</strong> —
-                nothing is sent to any server. Your data stays on your device. This also means clearing your browser
-                data will erase your invoices, so use the <strong>Export</strong> feature in Saved Invoices regularly to
-                keep backups.</p>
-            </div>
-          </div>
-
-          <div class="faq-item">
-            <button class="faq-question" onclick="toggleFaq(this)">
-              <span>How do I back up and restore my invoices?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
-                height="16">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-            <div class="faq-answer">
-              <p>In <strong>Saved Invoices</strong>, use the <strong>Export</strong> button to download a
-                <code>.json</code> backup file of all your invoices. To restore, click <strong>Import</strong> and
-                select your backup file — it will merge with your existing invoices and skip any duplicates
-                automatically.
-              </p>
-            </div>
-          </div>
-
-          <div class="faq-item">
-            <button class="faq-question" onclick="toggleFaq(this)">
-              <span>How do I edit a saved invoice?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
-                height="16">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-            <div class="faq-answer">
-              <p>Open <strong>Saved Invoices</strong>, find your invoice, and click the <strong>Edit</strong> button.
-                This loads it back into the invoice editor with a green edit-mode indicator. Make your changes and click
-                <strong>Update Invoice</strong> to save. You can also click <strong>Cancel</strong> to discard changes.
-              </p>
-            </div>
-          </div>
-
-          <div class="faq-item">
-            <button class="faq-question" onclick="toggleFaq(this)">
-              <span>How do I print or save an invoice as PDF?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
-                height="16">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-            <div class="faq-answer">
-              <p>Click the <strong>Print</strong> button on any invoice. Your browser's print dialog will open. To save
-                as PDF, choose <strong>"Save as PDF"</strong> as the destination (available in Chrome, Edge, Firefox,
-                and Safari). The invoice is formatted for A4 with clean print styles — the sidebar, buttons, and UI
-                elements are all hidden automatically.</p>
-            </div>
-          </div>
-
-          <div class="faq-item">
-            <button class="faq-question" onclick="toggleFaq(this)">
-              <span>How do I send an invoice by email?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
-                height="16">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-            <div class="faq-answer">
-              <p>From <strong>Saved Invoices</strong>, click <strong>Draft Email</strong> on any invoice. EliteInvoice
-                will generate a professional email draft based on the invoice details and how overdue it is. You can
-                copy the draft to your clipboard or open it directly in your default mail app.</p>
-            </div>
-          </div>
-
-          <div class="faq-item">
-            <button class="faq-question" onclick="toggleFaq(this)">
-              <span>How do I change the currency or add tax?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
-                height="16">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-            <div class="faq-answer">
-              <p>Select a currency from the dropdown in the top-right of the <strong>New Invoice</strong> view — 20
-                currencies with country flags are available. For tax, use the <strong>Tax %</strong> field at the bottom
-                of the invoice — enter a percentage (e.g. <code>10</code> for 10%) and the subtotal, tax, and total will
-                update live.</p>
-            </div>
-          </div>
-
-          <div class="faq-item">
-            <button class="faq-question" onclick="toggleFaq(this)">
-              <span>How does Total Revenue calculation work?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
-                height="16">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-            <div class="faq-answer">
-              <p>The revenue dashboard at the top of <strong>Saved Invoices</strong> totals all your invoices in your
-                chosen base currency. Live exchange rates are fetched via <strong>Frankfurter</strong> (with
-                open.er-api.com as a fallback). Set your base currency in <strong>Settings → Base Currency</strong> and
-                click Apply.</p>
-            </div>
-          </div>
-
-          <div class="faq-item">
-            <button class="faq-question" onclick="toggleFaq(this)">
-              <span>How do I switch between light and dark mode?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
-                height="16">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-            <div class="faq-answer">
-              <p>Go to <strong>Settings</strong> and click the <strong>Light Mode / Dark Mode</strong> toggle button in
-                the top-right corner of the header. Your preference is saved automatically and will persist across
-                sessions. The app also respects your system preference on first visit.</p>
-            </div>
-          </div>
-
-        </div>
-
-        <!-- Tips section -->
-        <div class="help-section-title" style="margin-top:32px;">Pro Tips</div>
-        <div class="help-tips">
-          <div class="help-tip">
-            <span class="help-tip-num">01</span>
-            <div>
-              <strong>Use AI Magic for recurring clients</strong> — paste an old email or description and the AI fills
-              the whole form in seconds.
-            </div>
-          </div>
-          <div class="help-tip">
-            <span class="help-tip-num">02</span>
-            <div>
-              <strong>Export weekly</strong> — since data is in localStorage, a regular export habit protects you from
-              accidental data loss.
-            </div>
-          </div>
-          <div class="help-tip">
-            <span class="help-tip-num">03</span>
-            <div>
-              <strong>Set your business profile first</strong> — your name, email, address and logo appear on every
-              invoice. Do it once in Settings.
-            </div>
-          </div>
-          <div class="help-tip">
-            <span class="help-tip-num">04</span>
-            <div>
-              <strong>Tab through fields</strong> — all form inputs support keyboard navigation for fast invoice entry
-              without touching the mouse.
-            </div>
-          </div>
-        </div>
-
-        <!-- AI Disclaimer + Contact -->
-        <div class="help-footer-cards">
-
-          <div class="help-disclaimer">
-            <div class="help-disclaimer-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="18" height="18">
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                <line x1="12" y1="9" x2="12" y2="13" />
-                <line x1="12" y1="17" x2="12.01" y2="17" stroke-linecap="round" stroke-width="2.5" />
-              </svg>
-            </div>
-            <div>
-              <div class="help-disclaimer-title">AI Disclaimer</div>
-              <p class="help-disclaimer-text">
-                The AI Magic Input uses a language model to extract invoice data from your text.
-                While it works well in most cases, <strong>AI can make mistakes</strong> — always review
-                the auto-filled fields before saving. Verify amounts, dates, and client details to ensure
-                your invoice is accurate.
-              </p>
-            </div>
-          </div>
-
-          <div class="help-contact">
-            <div class="help-contact-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="18" height="18">
-                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                <polyline points="22,6 12,13 2,6" />
-              </svg>
-            </div>
-            <div>
-              <div class="help-contact-title">Feedback &amp; Support</div>
-              <p class="help-contact-text">
-                Have a suggestion, found a bug, or just want to say hello?
-                I'd love to hear from you —
-                <a href="mailto:me@geanpaulo.com" class="help-contact-link">me@geanpaulo.com</a>
-              </p>
-            </div>
-          </div>
-
-        </div>
-
-      </section>
-
-    </main>
-
-    <footer class="app-footer no-print">
-      © 2026 — Built with ❤️ by
-      <a href="https://geanpaulo.com" target="_blank" rel="noopener noreferrer">Gean Paulo</a>
-    </footer>
-  </div>
-
-  <!-- ═══════════════════════ AI EMAIL MODAL ═══════════════════════ -->
-  <div class="modal-overlay" id="emailModal" onclick="App.closeEmailModal(event)">
-    <div class="modal-card">
-      <div class="modal-header">
-        <div class="modal-title-group">
-          <div class="modal-ai-badge">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="13" height="13">
-              <polygon
-                points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-            </svg>
-            AI Follow-up Drafter
-          </div>
-          <span class="modal-invoice-ref" id="modalInvoiceRef"></span>
-        </div>
-        <button class="modal-close" onclick="App.closeEmailModal()" aria-label="Close">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      </div>
-      <div class="modal-loading" id="modalLoading">
-        <span class="spinner"></span>
-        <span>Drafting your follow-up email…</span>
-      </div>
-      <div class="modal-result" id="modalResult" style="display:none">
-        <div class="modal-tone-badge" id="modalToneBadge"></div>
-        <div class="modal-field-group">
-          <label class="modal-field-label">Subject</label>
-          <input type="text" id="modalSubject" class="modal-subject-input" readonly />
-        </div>
-        <div class="modal-field-group">
-          <label class="modal-field-label">Email Body</label>
-          <textarea id="modalBody" class="modal-body-textarea" rows="12" readonly></textarea>
-        </div>
-        <div class="modal-actions">
-          <button class="btn-secondary" onclick="App.copyEmailDraft()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="14" height="14">
-              <rect x="9" y="9" width="13" height="13" rx="2" />
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-            </svg>
-            Copy Draft
-          </button>
-          <button class="btn-primary" onclick="App.openInMailClient()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="14" height="14">
-              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-              <polyline points="22,6 12,13 2,6" />
-            </svg>
-            Open in Mail
-          </button>
-        </div>
-      </div>
-      <div class="modal-error" id="modalError" style="display:none">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32">
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" y1="8" x2="12" y2="12" />
-          <line x1="12" y1="16" x2="12.01" y2="16" />
-        </svg>
-        <p id="modalErrorMsg">Something went wrong. Please try again.</p>
-        <button class="btn-secondary" onclick="App.closeEmailModal()">Close</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal-overlay" id="confirmDialog"
-    onclick="if(event.target===this){this.classList.remove('visible');document.body.style.overflow='';}">
-    <div class="confirm-box">
-      <div class="confirm-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="24" height="24">
-          <polyline points="3 6 5 6 21 6" />
-          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-          <path d="M10 11v6" />
-          <path d="M14 11v6" />
-          <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-        </svg>
-      </div>
-      <h3 id="confirmTitle">Delete invoice?</h3>
-      <p id="confirmSubtitle">This cannot be undone.</p>
-      <div class="confirm-actions">
-        <button class="btn-secondary" id="confirmCancel">Cancel</button>
-        <button class="btn-danger" id="confirmOk">Delete</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══════════════════ SIMILAR INVOICE DIALOG ═══════════════════ -->
-  <div class="modal-overlay" id="similarDialog">
-    <div class="confirm-box similar-box">
-      <div class="confirm-icon similar-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="24" height="24">
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" y1="8" x2="12" y2="12" />
-          <line x1="12" y1="16" x2="12.01" y2="16" stroke-linecap="round" stroke-width="2.5" />
-        </svg>
-      </div>
-      <h3 id="similarTitle">Similar invoice found</h3>
-      <p id="similarSubtitle">A similar invoice already exists.</p>
-      <div id="similarMatches" class="similar-matches"></div>
-      <div class="confirm-actions">
-        <button class="btn-secondary" id="similarCancel">Cancel</button>
-        <button class="btn-ghost" id="similarViewBtn">View Existing</button>
-        <button class="btn-primary" id="similarSaveAnyway">Save Anyway</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="app.js"></script>
-</body>
-</html>
+        </div>`;
+    }).join('');
+  }
+
+  function filterHistory() {
+    const input = document.getElementById('historySearchInput');
+    const clearBtn = document.getElementById('historySearchClear');
+    _historySearch = input ? input.value : '';
+    if (clearBtn) clearBtn.style.display = _historySearch ? 'flex' : 'none';
+    renderHistoryList();
+  }
+
+  function clearHistorySearch() {
+    const input = document.getElementById('historySearchInput');
+    if (input) input.value = '';
+    _historySearch = '';
+    const clearBtn = document.getElementById('historySearchClear');
+    if (clearBtn) clearBtn.style.display = 'none';
+    renderHistoryList();
+    input && input.focus();
+  }
+
+  function setHistoryFilter(filter) {
+    _historyFilter = filter;
+    document.querySelectorAll('.history-pill').forEach(p =>
+      p.classList.toggle('active', p.dataset.filter === filter)
+    );
+    renderHistoryList();
+  }
+
+  /* ══════════ AI FOLLOW-UP EMAIL MODAL ══════════ */
+  async function openEmailModal(idx) {
+    let invoices = [];
+    try {
+      const rawEM = await kvGet(KV_INVOICES);
+      invoices = rawEM ? JSON.parse(rawEM) : [];
+    } catch (e) { showToast('Could not load invoice data.'); return; }
+    const inv = invoices[idx];
+    if (!inv) { showToast('Invoice not found.'); return; }
+
+    const workerUrl = WORKER_URL;
+
+    const modal = document.getElementById('emailModal');
+    modal.classList.add('visible');
+    document.body.style.overflow = 'hidden';
+    document.getElementById('modalInvoiceRef').textContent = inv.id;
+    document.getElementById('modalLoading').style.display = 'flex';
+    document.getElementById('modalResult').style.display = 'none';
+    document.getElementById('modalError').style.display = 'none';
+
+    const days = daysOverdue(inv.due);
+    const tone = getTone(days);
+    const dueDateFormatted = inv.due
+      ? new Date(inv.due).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      : 'No due date specified';
+    const amountFormatted = `${inv.currency}${fmt(inv.total)}`;
+    const overdueContext =
+      days === null ? 'The invoice has no due date.' :
+        days < 0 ? `Not yet due — due in ${Math.abs(days)} day(s) on ${dueDateFormatted}.` :
+          days === 0 ? `Due TODAY (${dueDateFormatted}).` :
+            `${days} day(s) overdue. Was due on ${dueDateFormatted}.`;
+    const systemPrompt =
+      'You are a professional business assistant. Based on the provided invoice data, ' +
+      'write a polite but clear follow-up email.\n' +
+      '- If it\'s not due yet, write a "Gentle Heads-up".\n' +
+      '- If it\'s 1–7 days late, write a "Friendly Reminder".\n' +
+      '- If it\'s 8–13 days late, write a "Friendly Reminder" with slightly more urgency.\n' +
+      '- If it\'s 14+ days late, write a "Firm Follow-up".\n' +
+      'Include the invoice number and a "Pay Now" link placeholder: [PAY NOW LINK].\n' +
+      'Output ONLY the email in this exact format (no extra text, no markdown):\n' +
+      'SUBJECT: <subject line here>\n\n<email body here>';
+    const userMessage =
+      `Client Name: ${inv.clientName || 'Valued Client'}\n` +
+      `Client Email: ${inv.clientEmail || 'N/A'}\n` +
+      `Invoice Number: ${inv.id}\n` +
+      `Invoice Amount: ${amountFormatted}\n` +
+      `Due Date: ${dueDateFormatted}\n` +
+      `Status: ${overdueContext}\n` +
+      `Tone required: ${tone.label}`;
+    try {
+      const res = await fetch(workerUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage }
+          ]
+        })
+      });
+      if (!res.ok) throw new Error(`Worker responded HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      const rawText = data.content || '';
+      const subjectMatch = rawText.match(/^SUBJECT:\s*(.+)/im);
+      const subject = subjectMatch ? subjectMatch[1].trim() : `Follow-up: Invoice ${inv.id}`;
+      const body = rawText.replace(/^SUBJECT:\s*.+\n?/im, '').trim();
+      _currentDraft = { subject, body, clientEmail: inv.clientEmail || '' };
+      document.getElementById('modalLoading').style.display = 'none';
+      document.getElementById('modalResult').style.display = 'block';
+      const badge = document.getElementById('modalToneBadge');
+      badge.textContent = `${tone.emoji}  ${tone.label}`;
+      badge.className = `modal-tone-badge ${tone.key}`;
+      document.getElementById('modalSubject').value = subject;
+      document.getElementById('modalBody').value = body;
+    } catch (err) {
+      console.error('Email draft error:', err);
+      document.getElementById('modalLoading').style.display = 'none';
+      document.getElementById('modalError').style.display = 'flex';
+      document.getElementById('modalErrorMsg').textContent =
+        `AI drafting failed: ${err.message}`;
+    }
+  }
+
+  function closeEmailModal(event) {
+    if (event && event.target !== document.getElementById('emailModal')) return;
+    _closeModal();
+  }
+  function _closeModal() {
+    document.getElementById('emailModal').classList.remove('visible');
+    document.body.style.overflow = '';
+    setTimeout(() => {
+      document.getElementById('modalLoading').style.display = 'flex';
+      document.getElementById('modalResult').style.display = 'none';
+      document.getElementById('modalError').style.display = 'none';
+    }, 200);
+  }
+
+  async function copyEmailDraft() {
+    const full = `Subject: ${document.getElementById('modalSubject').value}\n\n${document.getElementById('modalBody').value}`;
+    try {
+      await navigator.clipboard.writeText(full);
+      showToast('Email draft copied to clipboard!');
+    } catch (_) {
+      const ta = document.createElement('textarea');
+      ta.value = full; ta.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+      showToast('Email draft copied!');
+    }
+  }
+
+  function openInMailClient() {
+    const s = encodeURIComponent(_currentDraft.subject);
+    const b = encodeURIComponent(_currentDraft.body);
+    const t = encodeURIComponent(_currentDraft.clientEmail);
+    window.location.href = `mailto:${t}?subject=${s}&body=${b}`;
+  }
+
+  /* ══════════ LOAD INVOICE INTO EDITOR ══════════ */
+  async function loadInvoiceToEditor(idx) {
+    try {
+      const rawInv = await kvGet(KV_INVOICES);
+      let invoices = rawInv ? JSON.parse(rawInv) : [];
+      const inv = invoices[idx];
+      if (!inv) return;
+      currentCurrency = inv.currency || '$';
+      const sel = document.getElementById('currencySelect');
+      for (let opt of sel.options) {
+        if (opt.value === currentCurrency) { sel.value = currentCurrency; break; }
+      }
+      document.getElementById('invoiceNumber').value = inv.id;
+      document.getElementById('invoiceDate').value = inv.date;
+      document.getElementById('invoiceDue').value = inv.due;
+      document.getElementById('clientName').value = inv.clientName;
+      document.getElementById('clientEmail').value = inv.clientEmail;
+      document.getElementById('clientAddress').value = inv.clientAddr;
+      document.getElementById('invoiceNotes').value = inv.notes;
+      document.getElementById('taxRateInput').value = inv.taxPct;
+      document.getElementById('invoiceBody').innerHTML = '';
+      inv.items.forEach(item => addRow(item.desc, item.qty, item.price));
+
+      // Enter edit mode — toolbar swaps to Update + Cancel Edit
+      setEditMode(idx);
+
+      navigate('invoice');
+      showToast(`Editing ${inv.id} — make changes and click Update Invoice.`);
+    } catch (e) { showToast('Failed to load invoice.'); }
+  }
+
+  /* ══════════ DELETE INVOICE ══════════ */
+  async function deleteInvoice(idx) {
+    const rawInv = localStorage.getItem(KV_INVOICES);
+    const invoices = rawInv ? JSON.parse(rawInv) : [];
+    const inv = invoices[idx];
+    if (!inv) { showToast('Invoice not found.'); return; }
+    const targetId = inv.id;
+    const label = `${inv.id}${inv.clientName ? ' — ' + inv.clientName : ''}`;
+    showConfirm(`Delete ${label}?`, 'This cannot be undone.', async () => {
+      try {
+        const raw2 = localStorage.getItem(KV_INVOICES);
+        let list = raw2 ? JSON.parse(raw2) : [];
+        // Find by id to avoid stale-index issues
+        const freshIdx = list.findIndex(i => i.id === targetId);
+        if (freshIdx === -1) { showToast('Invoice already deleted.'); loadHistory(); return; }
+        list.splice(freshIdx, 1);
+        await kvSet(KV_INVOICES, JSON.stringify(list));
+        showToast('Invoice deleted.');
+        loadHistory();
+      } catch (e) { showToast('Delete failed.'); }
+    });
+  }
+
+  function showConfirm(title, subtitle, onConfirm) {
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmSubtitle').textContent = subtitle;
+    document.getElementById('confirmDialog').classList.add('visible');
+    document.body.style.overflow = 'hidden';
+    const btnOk = document.getElementById('confirmOk');
+    const btnCan = document.getElementById('confirmCancel');
+    const cleanup = () => {
+      document.getElementById('confirmDialog').classList.remove('visible');
+      document.body.style.overflow = '';
+      btnOk.replaceWith(btnOk.cloneNode(true));
+      btnCan.replaceWith(btnCan.cloneNode(true));
+    };
+    document.getElementById('confirmOk').addEventListener('click', () => { cleanup(); onConfirm(); });
+    document.getElementById('confirmCancel').addEventListener('click', cleanup);
+  }
+
+  /* ══════════ SETTINGS: LOAD ══════════ */
+  async function loadSettings() {
+    try {
+      const saved = await kvGet(KV_SETTINGS);
+      if (saved) {
+        settings = JSON.parse(saved);
+        document.getElementById('settingBizName').value = settings.bizName || '';
+        document.getElementById('settingBizAddress').value = settings.bizAddress || '';
+        document.getElementById('settingPhone').value = settings.phone || '';
+        document.getElementById('settingEmail').value = settings.email || '';
+        document.getElementById('settingLinkedin').value = settings.linkedin || '';
+        document.getElementById('settingInstagram').value = settings.instagram || '';
+        document.getElementById('settingTwitter').value = settings.twitter || '';
+        document.getElementById('settingGithub').value = settings.github || '';
+        applySettingsToInvoice();
+      }
+    } catch (_) { }
+    const sel = document.getElementById('baseCurrencySelect');
+    if (sel) sel.value = baseCurrency;
+    // Restore logo from localStorage
+    const logoB64 = localStorage.getItem(LS_LOGO_KEY);
+    if (logoB64) {
+      settings.logoUrl = logoB64;
+      const preview = document.getElementById('settingsLogoPreview');
+      preview.src = logoB64;
+      preview.style.display = 'block';
+      document.getElementById('logoPlaceholder').style.display = 'none';
+      applySettingsToInvoice();
+    }
+  }
+
+  /* ══════════ SETTINGS: SAVE ══════════ */
+  async function saveSettings() {
+    const statusEl = document.getElementById('settingsSaveStatus');
+    settings.bizName = document.getElementById('settingBizName').value.trim();
+    settings.bizAddress = document.getElementById('settingBizAddress').value.trim();
+    settings.phone = document.getElementById('settingPhone').value.trim();
+    settings.email = document.getElementById('settingEmail').value.trim();
+    settings.linkedin = document.getElementById('settingLinkedin').value.trim();
+    settings.instagram = document.getElementById('settingInstagram').value.trim();
+    settings.twitter = document.getElementById('settingTwitter').value.trim();
+    settings.github = document.getElementById('settingGithub').value.trim();
+
+    try {
+      await kvSet(KV_SETTINGS, JSON.stringify(settings));
+      applySettingsToInvoice();
+      statusEl.textContent = '✓ Settings saved';
+      statusEl.className = 'save-status ok';
+      showToast('Settings saved!');
+      setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'save-status'; }, 3000);
+      updateStatus('online', 'Ready');
+    } catch (e) {
+      statusEl.textContent = '✗ Failed to save';
+      statusEl.className = 'save-status err';
+    }
+  }
+
+  /* ══════════ APPLY SETTINGS → INVOICE ══════════ */
+  function applySettingsToInvoice() {
+    document.getElementById('invoiceBizName').textContent = settings.bizName || 'Your Business Name';
+    document.getElementById('invoiceBizAddress').textContent = settings.bizAddress || '123 Main Street, City, Country';
+    const contactEl = document.getElementById('invoiceBizContact');
+    const parts = [];
+    if (settings.phone) parts.push(escHtml(settings.phone));
+    if (settings.email) parts.push(
+      `<a href="mailto:${escHtml(settings.email)}">${escHtml(settings.email)}</a>`
+    );
+    [
+      { key: 'linkedin', label: 'LinkedIn' },
+      { key: 'instagram', label: 'Instagram' },
+      { key: 'twitter', label: 'X' },
+      { key: 'github', label: 'GitHub' }
+    ].forEach(({ key, label }) => {
+      if (settings[key]) parts.push(
+        `<a href="${escHtml(settings[key])}" target="_blank" rel="noopener">${label}</a>`
+      );
+    });
+    contactEl.innerHTML = parts.join(' &nbsp;·&nbsp; ');
+    if (settings.logoUrl) {
+      const logo = document.getElementById('invoiceLogo');
+      logo.src = settings.logoUrl;
+      logo.style.display = 'block';
+    }
+  }
+
+  /* ══════════ LOGO UPLOAD ══════════ */
+  function uploadLogo(input) {
+    const file = input.files[0];
+    const statusEl = document.getElementById('logoUploadStatus');
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      statusEl.textContent = '✗ File too large (max 2MB)';
+      statusEl.className = 'upload-status err'; return;
+    }
+    statusEl.innerHTML = '<span class="spinner"></span> Processing…';
+    statusEl.className = 'upload-status';
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target.result;
+      settings.logoUrl = dataUrl;
+      localStorage.setItem(LS_LOGO_KEY, dataUrl);
+      kvSet(KV_SETTINGS, JSON.stringify(settings))
+        .then(() => {
+          const preview = document.getElementById('settingsLogoPreview');
+          preview.src = dataUrl;
+          preview.style.display = 'block';
+          document.getElementById('logoPlaceholder').style.display = 'none';
+          applySettingsToInvoice();
+          statusEl.textContent = '✓ Logo saved';
+          statusEl.className = 'upload-status ok';
+          showToast('Logo uploaded!');
+        })
+        .catch(() => {
+          statusEl.textContent = '✗ Save failed — try again';
+          statusEl.className = 'upload-status err';
+        });
+    };
+    reader.onerror = () => {
+      statusEl.textContent = '✗ Read failed — try again';
+      statusEl.className = 'upload-status err';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  /* ══════════ STATUS BAR ══════════ */
+  function updateStatus(state, text) {
+    const dot = document.getElementById('statusDot');
+    if (dot) dot.className = 'status-dot ' + state;
+    const txt = document.getElementById('statusText');
+    if (txt) txt.textContent = text;
+  }
+
+  /* ══════════ TOAST ══════════ */
+  let toastTimer;
+  function showToast(msg) {
+    let toast = document.getElementById('toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'toast';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 2800);
+  }
+
+  /* ══════════ UTILITIES ══════════ */
+  function fmt(n) {
+    return Number(n).toLocaleString('en-US', {
+      minimumFractionDigits: 2, maximumFractionDigits: 2
+    });
+  }
+  function fmtDate(d) { return d.toISOString().split('T')[0]; }
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function toggleTheme() {
+    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('eliteinvoice_theme', next);
+  }
+  function initTheme() {
+    const saved = localStorage.getItem('eliteinvoice_theme') ||
+      (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', saved);
+  }
+
+  function exportInvoices() {
+    const raw = localStorage.getItem(KV_INVOICES);
+    const invoices = raw ? JSON.parse(raw) : [];
+    if (!invoices.length) { showToast('No invoices to export.'); return; }
+    const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), invoices }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `eliteinvoice-backup-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+    URL.revokeObjectURL(url);
+    showToast(`${invoices.length} invoice${invoices.length > 1 ? 's' : ''} exported.`);
+  }
+  function importInvoices(input) {
+    const file = input.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const parsed = JSON.parse(e.target.result);
+        const incoming = parsed.invoices || (Array.isArray(parsed) ? parsed : null);
+        if (!incoming) throw new Error('Unrecognised file format.');
+        const raw = localStorage.getItem(KV_INVOICES);
+        const existing = raw ? JSON.parse(raw) : [];
+        const ids = new Set(existing.map(i => i.id));
+        const merged = [...existing, ...incoming.filter(i => !ids.has(i.id))];
+        localStorage.setItem(KV_INVOICES, JSON.stringify(merged));
+        showToast(`${incoming.length} invoice${incoming.length > 1 ? 's' : ''} imported (${merged.length - existing.length} new).`);
+        loadHistory();
+      } catch (err) { showToast('Import failed: ' + err.message); }
+      input.value = '';
+    };
+    reader.readAsText(file);
+  }
+
+
+  /* ══════════ TEMPLATES ══════════ */
+  const TEMPLATES = ['classic', 'minimal', 'bold', 'slate', 'ocean', 'rose', 'midnight', 'forest'];
+
+  function initTemplate() {
+    const saved = localStorage.getItem(KV_TEMPLATE) || 'classic';
+    applyTemplate(saved, false);
+  }
+
+  function applyTemplate(name, save = true) {
+    const doc = document.getElementById('invoiceDocument');
+    if (!doc) return;
+    TEMPLATES.forEach(t => doc.classList.remove('tpl-' + t));
+    doc.classList.add('tpl-' + name);
+    // Update selected state in template picker
+    document.querySelectorAll('.template-card').forEach(card => {
+      card.classList.toggle('selected', card.dataset.tpl === name);
+    });
+    if (save) localStorage.setItem(KV_TEMPLATE, name);
+  }
+
+  function selectTemplate(name) {
+    applyTemplate(name, true);
+    showToast('Template applied: ' + name.charAt(0).toUpperCase() + name.slice(1));
+  }
+
+
+  /* ══════════ SPLASH SCREEN ══════════ */
+  function showSplashIfNew() {
+    const seen = localStorage.getItem(KV_SEEN);
+    if (seen) return; // returning user — skip
+    const el = document.getElementById('splashScreen');
+    if (!el) return;
+    el.style.display = 'flex';
+  }
+
+  /* ══════════ PUBLIC API ══════════ */
+  return {
+    init, navigate,
+    toggleSidebar, closeSidebar,
+    addRow, deleteRow, updateTotals,
+    setCurrency, newInvoice, cancelEdit, runMagicParse,
+    saveInvoice, updateInvoice, clearInvoice, loadHistory,
+    loadInvoiceToEditor, deleteInvoice, showConfirm,
+    saveSettings, uploadLogo,
+    saveBaseCurrency,
+    openEmailModal, closeEmailModal,
+    copyEmailDraft, openInMailClient,
+    exportInvoices, importInvoices,
+    toggleTheme,
+    calculateTotalRevenue,
+    selectTemplate, applyTemplate,
+    filterHistory, clearHistorySearch, setHistoryFilter
+  };
+})();
+
+
+/* ══════════════════════════════════════════════════
+   SPLASH — global dismiss handler
+══════════════════════════════════════════════════ */
+const EliteSplash = {
+  dismiss() {
+    localStorage.setItem('eliteinvoice_seen', '1');
+    const el = document.getElementById('splashScreen');
+    if (!el) return;
+    el.classList.add('splash-hiding');
+    setTimeout(() => { el.style.display = 'none'; }, 520);
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  App.init().catch(err => console.warn('EliteInvoice init error:', err));
+});
+
+/* ══════════════════════════════════════════════════
+   SAFARI PRINT FIX
+   Safari enforces a minimum top margin (~12 mm) even when
+   @page { margin: 0 } is declared in CSS, causing the top gradient
+   bar and invoice header to be physically clipped.
+   Since @page rules cannot be scoped to a CSS selector, we detect
+   Safari and — only at print time — inject a temporary <style> block
+   with a matching top margin so the content is never cut off.
+   The block is removed after printing; no effect on screen layout.
+══════════════════════════════════════════════════ */
+(function () {
+  const isSafari =
+    typeof navigator !== 'undefined' &&
+    /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  if (!isSafari) return;
+
+  window.addEventListener('beforeprint', function () {
+    if (document.getElementById('_safari_print_fix')) return;
+    const el = document.createElement('style');
+    el.id = '_safari_print_fix';
+    el.textContent =
+      '@media print { @page { size: A4; margin: 12mm 0 0 0; } }';
+    document.head.appendChild(el);
+  });
+
+  window.addEventListener('afterprint', function () {
+    const el = document.getElementById('_safari_print_fix');
+    if (el) el.remove();
+  });
+}());
+
+/* ══════════════════════════════════════════════════
+   FAQ ACCORDION (global helper)
+══════════════════════════════════════════════════ */
+function toggleFaq(btn) {
+  const item = btn.closest('.faq-item');
+  const answer = item.querySelector('.faq-answer');
+  const isOpen = answer.classList.contains('open');
+  // Close all
+  document.querySelectorAll('.faq-answer.open').forEach(a => a.classList.remove('open'));
+  document.querySelectorAll('.faq-question.open').forEach(b => b.classList.remove('open'));
+  // Toggle current
+  if (!isOpen) {
+    answer.classList.add('open');
+    btn.classList.add('open');
+  }
+}
