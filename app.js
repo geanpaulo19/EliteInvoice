@@ -107,6 +107,7 @@ const App = (() => {
     fetchFxRates().catch(e => console.warn('FX fetch failed on init:', e));
 
     updateStatus('online', 'Ready');
+    initClock();
   }
 
   /* ══════════ EDIT-MODE UI HELPERS ══════════ */
@@ -1203,6 +1204,20 @@ const App = (() => {
     if (dot) dot.className = 'status-dot ' + state;
     const txt = document.getElementById('statusText');
     if (txt) txt.textContent = text;
+  }
+
+  /* ══════════ SIDEBAR CLOCK ══════════ */
+  function initClock() {
+    const el = document.getElementById('sidebarDatetime');
+    if (!el) return;
+    function tick() {
+      const now = new Date();
+      const date = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      const time = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      el.textContent = date + '  ·  ' + time;
+    }
+    tick();
+    setInterval(tick, 1000);
   }
 
   /* ══════════ TOAST ══════════ */
