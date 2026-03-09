@@ -1157,6 +1157,13 @@ body { display: flex; min-height: 100vh; }
   .invoice-biz-address { font-size: 9pt !important; color: #3d4a5c !important; line-height: 1.55 !important; }
   .invoice-biz-contact { font-size: 9pt !important; color: #6b7a90 !important; line-height: 1.6 !important; }
   .invoice-biz-contact a { color: #1a56db !important; text-decoration: none !important; }
+  /* Per-template link colors in print */
+  .tpl-bold     .invoice-biz-contact a { color: #93c5fd !important; }
+  .tpl-slate    .invoice-biz-contact a { color: #166534 !important; }
+  .tpl-ocean    .invoice-biz-contact a { color: #0891b2 !important; }
+  .tpl-rose     .invoice-biz-contact a { color: #fecdd3 !important; }
+  .tpl-midnight .invoice-biz-contact a { color: #bfdbfe !important; }
+  .tpl-forest   .invoice-biz-contact a { color: #bbf7d0 !important; }
 
   /* ── Invoice number & dates ── */
   .invoice-title-label { font-size: 7.5pt !important; font-weight: 700 !important; letter-spacing: 0.18em !important; color: #6b7a90 !important; text-transform: uppercase !important; }
@@ -1450,7 +1457,16 @@ body { display: flex; min-height: 100vh; }
 /* Dark mode adjustments for bold/slate top bands */
 [data-theme="dark"] .tpl-bold .invoice-top { background: #111113; }
 [data-theme="dark"] .tpl-slate .invoice-top { background: #1e2a1e; border-bottom-color: #4a5568; }
-[data-theme="dark"] .tpl-slate .invoice-biz-name { color: #e2e8f0; }
+[data-theme="dark"] .tpl-slate .invoice-biz-name    { color: #e2e8f0; }
+[data-theme="dark"] .tpl-slate .invoice-biz-address { color: #a0aec0; }
+[data-theme="dark"] .tpl-slate .invoice-biz-contact { color: #718096; }
+[data-theme="dark"] .tpl-slate .invoice-biz-contact a { color: #4ade80; }
+[data-theme="dark"] .tpl-slate .invoice-title-label { color: #718096; }
+[data-theme="dark"] .tpl-slate .invoice-number,
+[data-theme="dark"] .tpl-slate .invoice-number-input { color: #4ade80; border-bottom-color: #4ade80; }
+[data-theme="dark"] .tpl-slate .date-row            { color: #a0aec0; }
+[data-theme="dark"] .tpl-slate .bill-label          { color: #a0aec0; }
+[data-theme="dark"] .tpl-slate .totals-grand        { color: #4ade80; border-top-color: #4a5568; }
 [data-theme="dark"] .tpl-bold .invoice-bill-to   { background: rgba(234,88,12,0.1); }
 [data-theme="dark"] .tpl-slate .invoice-bill-to  { background: rgba(45,106,79,0.1); }
 
@@ -1463,6 +1479,7 @@ body { display: flex; min-height: 100vh; }
   /* MINIMAL print */
   .tpl-minimal .invoice-document::before { display: none !important; }
   .tpl-minimal .invoice-number     { color: #0d1117 !important; }
+  .tpl-minimal .invoice-number-input { color: #0d1117 !important; }
   .tpl-minimal .invoice-bill-to    { background: #f9fafb !important; border-left: 2px solid #9ca3af !important; }
   .tpl-minimal .invoice-table th   { background: transparent !important; color: #0d1117 !important; border-bottom: 1.5px solid #0d1117 !important; }
   .tpl-minimal .invoice-table thead tr { background: transparent !important; border-bottom: 1.5px solid #0d1117 !important; }
@@ -1479,6 +1496,7 @@ body { display: flex; min-height: 100vh; }
   .tpl-bold .invoice-biz-contact { color: rgba(255,255,255,0.72) !important; }
   .tpl-bold .invoice-title-label { color: rgba(255,255,255,0.65) !important; }
   .tpl-bold .invoice-number      { color: #fb923c !important; }
+  .tpl-bold .invoice-number-input { color: #fb923c !important; }
   .tpl-bold .date-row            { color: rgba(255,255,255,0.88) !important; }
   .tpl-bold .date-input          { color: rgba(255,255,255,0.9) !important; }
   .tpl-bold .invoice-logo        { filter: none !important; }
@@ -1496,6 +1514,7 @@ body { display: flex; min-height: 100vh; }
   .tpl-slate .invoice-biz-name    { color: #1a202c !important; }
   .tpl-slate .invoice-biz-address { color: #4a5568 !important; }
   .tpl-slate .invoice-number      { color: #2d6a4f !important; }
+  .tpl-slate .invoice-number-input { color: #2d6a4f !important; }
   .tpl-slate .invoice-bill-to     { background: #f0fdf4 !important; border-left: 4px solid #4a5568 !important; }
   .tpl-slate .bill-label          { color: #4a5568 !important; }
   .tpl-slate .invoice-table th    { background: #4a5568 !important; color: #fff !important; }
@@ -1686,15 +1705,24 @@ body { display: flex; min-height: 100vh; }
 [data-theme="dark"] .tpl-midnight .invoice-top { background: #0f2340; }
 [data-theme="dark"] .tpl-forest .invoice-top   { background: #0f2a1a; }
 [data-theme="dark"] .tpl-rose .invoice-bill-to     { background: rgba(225,29,72,0.1); }
-[data-theme="dark"] .tpl-midnight .invoice-bill-to { background: rgba(30,58,95,0.15); }
-[data-theme="dark"] .tpl-forest .invoice-bill-to   { background: rgba(26,58,42,0.15); }
+[data-theme="dark"] .tpl-rose .bill-label           { color: #fb7185; }
+[data-theme="dark"] .tpl-midnight .invoice-bill-to  { background: rgba(30,58,95,0.15); }
+[data-theme="dark"] .tpl-midnight .bill-label       { color: #93c5fd; }
+[data-theme="dark"] .tpl-forest .invoice-bill-to    { background: rgba(26,58,42,0.15); }
+[data-theme="dark"] .tpl-forest .bill-label         { color: #4ade80; }
 [data-theme="dark"] .tpl-ocean .invoice-bill-to    { background: rgba(8,145,178,0.1); }
+[data-theme="dark"] .tpl-ocean .invoice-biz-name   { color: #22d3ee; }
+[data-theme="dark"] .tpl-ocean .invoice-number,
+[data-theme="dark"] .tpl-ocean .invoice-number-input { color: #22d3ee; border-bottom-color: #22d3ee; }
+[data-theme="dark"] .tpl-ocean .bill-label          { color: #22d3ee; }
+[data-theme="dark"] .tpl-ocean .totals-grand        { color: #22d3ee; border-top-color: #22d3ee; }
 
 @media print {
   /* OCEAN print */
   .tpl-ocean .invoice-document::before { background: linear-gradient(135deg,#0891b2,#06b6d4,#67e8f9) !important; }
   .tpl-ocean .invoice-print-bar { display: block !important; background: linear-gradient(135deg,#0891b2 0%,#06b6d4 60%,#67e8f9 100%) !important; }
   .tpl-ocean .invoice-number      { color: #0891b2 !important; }
+  .tpl-ocean .invoice-number-input { color: #0891b2 !important; }
   .tpl-ocean .invoice-bill-to     { background: #ecfeff !important; border-left: 4px solid #0891b2 !important; }
   .tpl-ocean .bill-label          { color: #0891b2 !important; }
   .tpl-ocean .invoice-table th    { background: #0e7490 !important; color: #fff !important; }
@@ -1712,6 +1740,7 @@ body { display: flex; min-height: 100vh; }
   .tpl-rose .invoice-biz-contact { color: rgba(255,255,255,0.72) !important; }
   .tpl-rose .invoice-title-label { color: rgba(255,255,255,0.65) !important; }
   .tpl-rose .invoice-number      { color: #fda4af !important; }
+  .tpl-rose .invoice-number-input { color: #fda4af !important; }
   .tpl-rose .date-row            { color: rgba(255,255,255,0.88) !important; }
   .tpl-rose .date-input          { color: rgba(255,255,255,0.9) !important; }
   .tpl-rose .invoice-bill-to     { background: #fff1f2 !important; border-left: 4px solid #e11d48 !important; }
@@ -1731,6 +1760,7 @@ body { display: flex; min-height: 100vh; }
   .tpl-midnight .invoice-biz-contact { color: rgba(255,255,255,0.72) !important; }
   .tpl-midnight .invoice-title-label { color: rgba(255,255,255,0.65) !important; }
   .tpl-midnight .invoice-number      { color: #d4af37 !important; }
+  .tpl-midnight .invoice-number-input { color: #d4af37 !important; }
   .tpl-midnight .date-row            { color: rgba(255,255,255,0.88) !important; }
   .tpl-midnight .date-input          { color: rgba(255,255,255,0.9) !important; }
   .tpl-midnight .invoice-bill-to     { background: #eff6ff !important; border-left: 4px solid #1e3a5f !important; }
@@ -1750,6 +1780,7 @@ body { display: flex; min-height: 100vh; }
   .tpl-forest .invoice-biz-contact { color: rgba(255,255,255,0.72) !important; }
   .tpl-forest .invoice-title-label { color: rgba(255,255,255,0.65) !important; }
   .tpl-forest .invoice-number      { color: #4ade80 !important; }
+  .tpl-forest .invoice-number-input { color: #4ade80 !important; }
   .tpl-forest .date-row            { color: rgba(255,255,255,0.88) !important; }
   .tpl-forest .date-input          { color: rgba(255,255,255,0.9) !important; }
   .tpl-forest .invoice-bill-to     { background: #f0fdf4 !important; border-left: 4px solid #1a3a2a !important; }
