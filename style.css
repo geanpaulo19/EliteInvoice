@@ -169,6 +169,14 @@ body { display: flex; min-height: 100vh; }
 .nav-item:hover  { background: var(--bg); color: var(--text-primary); }
 .nav-item.active { background: var(--accent-dim); color: var(--accent); font-weight: 600; }
 
+.sidebar-datetime {
+  padding: 0 12px 8px;
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  opacity: 0.72;
+  line-height: 1.6;
+  letter-spacing: 0.01em;
+}
 .sidebar-footer {
   display: flex;
   align-items: center;
