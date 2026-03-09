@@ -2,6 +2,8 @@
 
 **EliteInvoice** is a minimalist, professional invoicing web app built for freelancers and creatives. Describe your work in plain English and let AI build a complete, branded invoice in seconds.
 
+🔗 **Live App:** [invoice.geanpaulo.com](https://invoice.geanpaulo.com)
+
 ---
 
 ## ✨ Features
@@ -9,6 +11,8 @@
 - **✦ AI Magic Input** — Paste or type your work details in plain language (e.g. *"3 hours of UI design at $150/hr for Acme Corp, due in 30 days, 10% tax"*) and the AI auto-fills **everything**: client name, email, address, invoice date, due date, tax rate, notes, line items, and currency.
 - **🌍 20 Currencies with Flags** — Supports USD, EUR, GBP, PHP, JPY, AUD, CAD, SGD, HKD, NZD, KRW, INR, BRL, CHF, SEK, MXN, AED, SAR, PLN, CZK — automatically detected from your text.
 - **📊 Live Revenue Dashboard** — Auto-converts all saved invoices to your base currency using real-time exchange rates (Frankfurter + open.er-api.com fallback).
+- **🎨 8 Invoice Templates** — Choose from Classic, Minimal, Bold, Slate, Ocean, Rose, Midnight, and Forest — each with live preview and full print/PDF support.
+- **🔍 Search & Filter** — Find saved invoices instantly by client name or invoice number. Filter by All, Overdue, or Recent 30 days.
 - **🖨️ Print-to-PDF** — Polished A4 print layout with accent bar, zebra-striped table, and branded bill-to block. Always renders in light mode regardless of app theme.
 - **🌙 Dark / Light Mode** — Toggle in Settings. Respects your system preference on first visit.
 - **💾 Local Storage** — All invoices and settings are stored in your browser's `localStorage`. No account, no database, no server.
@@ -66,11 +70,13 @@ The AI Magic Input routes through a lightweight Cloudflare Worker to access Work
 
 ```
 .
-├── index.html     # App structure, sidebar, all views (Invoice, History, Settings, Help)
-├── style.css      # Styling, dark/light mode, print rules, responsive layout
-├── app.js         # Core logic, AI integration, localStorage, currency conversion
-├── worker.js      # Cloudflare Worker — AI proxy (deploy separately)
-└── README.md      # This file
+├── index.html        # App structure, sidebar, all views (Invoice, History, Templates, Settings, Help)
+├── style.css         # Styling, dark/light mode, print rules, responsive layout, 8 templates
+├── app.js            # Core logic, AI integration, localStorage, currency conversion, search/filter
+├── worker.js         # Cloudflare Worker — AI proxy (deploy separately)
+├── images/
+│   └── card.png      # Open Graph / Twitter Card image (1200×630px)
+└── README.md         # This file
 ```
 
 ---
