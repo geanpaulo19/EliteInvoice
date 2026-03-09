@@ -29,6 +29,7 @@ function kvDelete(key) {
 }
 const LS_LOGO_KEY  = 'eliteinvoice_logo_b64';   // base64 data-URL stored in localStorage
 const KV_TEMPLATE  = 'eliteinvoice_template';
+const KV_SEEN      = 'eliteinvoice_seen';
 
 const CCY_META = {
   '$':   { code: 'USD', symbol: '$'   },
@@ -83,6 +84,7 @@ const App = (() => {
 
   /* ══════════ INIT ══════════ */
   async function init() {
+    showSplashIfNew();
     initTheme();
     initTemplate();
     // Set up dates and defaults immediately — never blocked by network
@@ -1189,7 +1191,7 @@ const App = (() => {
 
 
   /* ══════════ TEMPLATES ══════════ */
-  const TEMPLATES = ['classic', 'minimal', 'bold', 'slate'];
+  const TEMPLATES = ['classic', 'minimal', 'bold', 'slate', 'ocean', 'rose', 'midnight', 'forest'];
 
   function initTemplate() {
     const saved = localStorage.getItem(KV_TEMPLATE) || 'classic';
@@ -1213,6 +1215,16 @@ const App = (() => {
     showToast('Template applied: ' + name.charAt(0).toUpperCase() + name.slice(1));
   }
 
+
+  /* ══════════ SPLASH SCREEN ══════════ */
+  function showSplashIfNew() {
+    const seen = localStorage.getItem(KV_SEEN);
+    if (seen) return; // returning user — skip
+    const el = document.getElementById('splashScreen');
+    if (!el) return;
+    el.style.display = 'flex';
+  }
+
   /* ══════════ PUBLIC API ══════════ */
   return {
     init, navigate,
@@ -1231,6 +1243,20 @@ const App = (() => {
     selectTemplate, applyTemplate
   };
 })();
+
+
+/* ══════════════════════════════════════════════════
+   SPLASH — global dismiss handler
+══════════════════════════════════════════════════ */
+const EliteSplash = {
+  dismiss() {
+    localStorage.setItem('eliteinvoice_seen', '1');
+    const el = document.getElementById('splashScreen');
+    if (!el) return;
+    el.classList.add('splash-hiding');
+    setTimeout(() => { el.style.display = 'none'; }, 520);
+  }
+};
 
 document.addEventListener('DOMContentLoaded', () => {
   App.init().catch(err => console.warn('EliteInvoice init error:', err));
