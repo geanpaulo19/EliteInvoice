@@ -41,6 +41,15 @@
         </svg>
         Saved Invoices
       </button>
+      <button class="nav-item" data-view="templates" onclick="App.navigate('templates')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <rect x="3" y="3" width="7" height="9" rx="1"/>
+          <rect x="14" y="3" width="7" height="5" rx="1"/>
+          <rect x="14" y="12" width="7" height="9" rx="1"/>
+          <rect x="3" y="16" width="7" height="5" rx="1"/>
+        </svg>
+        Templates
+      </button>
       <button class="nav-item" data-view="settings" onclick="App.navigate('settings')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <circle cx="12" cy="12" r="3"/>
@@ -193,7 +202,7 @@
             <div class="invoice-meta">
               <div class="invoice-title-block">
                 <span class="invoice-title-label">INVOICE</span>
-                <span class="invoice-number" id="invoiceNumber">#INV-0001</span>
+                <input type="text" class="invoice-number-input" id="invoiceNumber" value="#INV-0001" spellcheck="false" autocomplete="off"/>
               </div>
               <div class="invoice-dates">
                 <div class="date-row">
@@ -552,6 +561,174 @@
 
 
       <!-- ═══════════════════════ HELP VIEW ═══════════════════════ -->
+
+      <!-- ═══════════════════════ TEMPLATES VIEW ═══════════════════════ -->
+      <section class="view" id="view-templates">
+        <header class="view-header">
+          <div class="view-title-group">
+            <div class="view-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="22" height="22">
+                <rect x="3" y="3" width="7" height="9" rx="1"/>
+                <rect x="14" y="3" width="7" height="5" rx="1"/>
+                <rect x="14" y="12" width="7" height="9" rx="1"/>
+                <rect x="3" y="16" width="7" height="5" rx="1"/>
+              </svg>
+            </div>
+            <div>
+              <h1>Invoice Templates</h1>
+              <p class="subtitle">Choose a design for your invoice. Applied instantly to print.</p>
+            </div>
+          </div>
+        </header>
+
+        <div class="templates-grid">
+
+          <!-- Classic -->
+          <div class="template-card" data-tpl="classic" onclick="App.selectTemplate('classic')">
+            <div class="template-preview tpl-classic">
+              <div class="tpl-prev-bar"></div>
+              <div class="tpl-prev-header">
+                <div class="tpl-prev-biz">
+                  <div class="tpl-prev-logo"></div>
+                  <div>
+                    <div class="tpl-prev-bizname"></div>
+                    <div class="tpl-prev-line sm"></div>
+                  </div>
+                </div>
+                <div class="tpl-prev-meta">
+                  <div class="tpl-prev-invnum"></div>
+                  <div class="tpl-prev-line sm"></div>
+                  <div class="tpl-prev-line sm"></div>
+                </div>
+              </div>
+              <div class="tpl-prev-billtobg">
+                <div class="tpl-prev-line"></div>
+                <div class="tpl-prev-line sm"></div>
+              </div>
+              <div class="tpl-prev-tablehead"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-total"></div>
+            </div>
+            <div class="template-info">
+              <div class="template-name">Classic</div>
+              <div class="template-desc">Clean and professional. Blue accents, gradient header bar.</div>
+            </div>
+            <div class="template-check">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+          </div>
+
+          <!-- Minimal -->
+          <div class="template-card" data-tpl="minimal" onclick="App.selectTemplate('minimal')">
+            <div class="template-preview tpl-minimal">
+              <div class="tpl-prev-header">
+                <div class="tpl-prev-biz">
+                  <div>
+                    <div class="tpl-prev-bizname dark"></div>
+                    <div class="tpl-prev-line sm"></div>
+                  </div>
+                </div>
+                <div class="tpl-prev-meta">
+                  <div class="tpl-prev-invnum dark"></div>
+                  <div class="tpl-prev-line sm"></div>
+                </div>
+              </div>
+              <div class="tpl-prev-divider"></div>
+              <div class="tpl-prev-billtobg minimal">
+                <div class="tpl-prev-line"></div>
+                <div class="tpl-prev-line sm"></div>
+              </div>
+              <div class="tpl-prev-tablehead minimal"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-total minimal"></div>
+            </div>
+            <div class="template-info">
+              <div class="template-name">Minimal</div>
+              <div class="template-desc">No colour, no noise. Pure typography and whitespace.</div>
+            </div>
+            <div class="template-check">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+          </div>
+
+          <!-- Bold -->
+          <div class="template-card" data-tpl="bold" onclick="App.selectTemplate('bold')">
+            <div class="template-preview tpl-bold">
+              <div class="tpl-prev-header-band">
+                <div class="tpl-prev-biz light">
+                  <div class="tpl-prev-logo light"></div>
+                  <div>
+                    <div class="tpl-prev-bizname light"></div>
+                    <div class="tpl-prev-line sm light"></div>
+                  </div>
+                </div>
+                <div class="tpl-prev-invnum-bold">INV</div>
+              </div>
+              <div class="tpl-prev-billtobg bold">
+                <div class="tpl-prev-line"></div>
+                <div class="tpl-prev-line sm"></div>
+              </div>
+              <div class="tpl-prev-tablehead bold"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-total bold"></div>
+            </div>
+            <div class="template-info">
+              <div class="template-name">Bold</div>
+              <div class="template-desc">Dark header band, high contrast. Makes an impression.</div>
+            </div>
+            <div class="template-check">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+          </div>
+
+          <!-- Slate -->
+          <div class="template-card" data-tpl="slate" onclick="App.selectTemplate('slate')">
+            <div class="template-preview tpl-slate">
+              <div class="tpl-prev-slate-top">
+                <div class="tpl-prev-bizname slate"></div>
+                <div class="tpl-prev-line sm slate"></div>
+                <div class="tpl-prev-line sm slate" style="width:55%"></div>
+              </div>
+              <div class="tpl-prev-slate-meta">
+                <div class="tpl-prev-invnum slate"></div>
+                <div class="tpl-prev-line sm"></div>
+                <div class="tpl-prev-line sm"></div>
+              </div>
+              <div class="tpl-prev-billtobg slate">
+                <div class="tpl-prev-line"></div>
+                <div class="tpl-prev-line sm"></div>
+              </div>
+              <div class="tpl-prev-tablehead slate"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-total slate"></div>
+            </div>
+            <div class="template-info">
+              <div class="template-name">Slate</div>
+              <div class="template-desc">Earthy tones with a left-aligned biz block. Warm and modern.</div>
+            </div>
+            <div class="template-check">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+          </div>
+
+        </div>
+
+        <p class="templates-note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="13" height="13" style="flex-shrink:0;margin-top:2px">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          Template choice is saved automatically and applies to print / PDF output. Your invoice content is never affected.
+        </p>
+
+      </section>
+
       <section class="view" id="view-help">
         <header class="view-header">
           <div class="view-title-group">
@@ -789,7 +966,7 @@
               <p class="help-contact-text">
                 Have a suggestion, found a bug, or just want to say hello?
                 I'd love to hear from you —
-                <a href="mailto:me@geanpaulo.com" class="help-contact-link">me@geanpaulo.com</a>
+                <a href="/cdn-cgi/l/email-protection#e8858da88f8d898698899d8487c68b8785" class="help-contact-link"><span class="__cf_email__" data-cfemail="076a6247606266697766726b682964686a">[email&#160;protected]</span></a>
               </p>
             </div>
           </div>
@@ -886,6 +1063,28 @@
       </div>
     </div>
   </div>
+
+  <!-- ═══════════════════ SIMILAR INVOICE DIALOG ═══════════════════ -->
+  <div class="modal-overlay" id="similarDialog">
+    <div class="confirm-box similar-box">
+      <div class="confirm-icon similar-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="24" height="24">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16" stroke-linecap="round" stroke-width="2.5"/>
+        </svg>
+      </div>
+      <h3 id="similarTitle">Similar invoice found</h3>
+      <p id="similarSubtitle">A similar invoice already exists.</p>
+      <div id="similarMatches" class="similar-matches"></div>
+      <div class="confirm-actions">
+        <button class="btn-secondary" id="similarCancel">Cancel</button>
+        <button class="btn-ghost" id="similarViewBtn">View Existing</button>
+        <button class="btn-primary" id="similarSaveAnyway">Save Anyway</button>
+      </div>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>
