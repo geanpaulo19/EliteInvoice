@@ -9,6 +9,88 @@
 </head>
 <body>
 
+  <!-- ═══════════════════════ SPLASH SCREEN ═══════════════════════ -->
+  <div id="splashScreen" class="splash-screen" style="display:none">
+    <div class="splash-bg">
+      <div class="splash-orb splash-orb-1"></div>
+      <div class="splash-orb splash-orb-2"></div>
+      <div class="splash-orb splash-orb-3"></div>
+    </div>
+    <div class="splash-card">
+      <div class="splash-logo-wrap">
+        <svg width="52" height="52" viewBox="0 0 28 28" fill="none">
+          <rect width="28" height="28" rx="7" fill="#0071e3"/>
+          <path d="M7 20L11 8H14L17 16L19 11H22L18 20H15L12 12L10 20H7Z" fill="white"/>
+        </svg>
+      </div>
+      <h1 class="splash-title">EliteInvoice</h1>
+      <p class="splash-tagline">Professional invoicing, beautifully simple.</p>
+
+      <div class="splash-features">
+        <div class="splash-feature">
+          <div class="splash-feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="8" y1="13" x2="16" y2="13"/>
+              <line x1="8" y1="17" x2="16" y2="17"/>
+            </svg>
+          </div>
+          <div>
+            <div class="splash-feature-title">Create Invoices Fast</div>
+            <div class="splash-feature-desc">Build and send professional invoices in seconds</div>
+          </div>
+        </div>
+        <div class="splash-feature">
+          <div class="splash-feature-icon ai">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+          </div>
+          <div>
+            <div class="splash-feature-title">AI Magic Input</div>
+            <div class="splash-feature-desc">Paste any text — AI fills your entire invoice</div>
+          </div>
+        </div>
+        <div class="splash-feature">
+          <div class="splash-feature-icon privacy">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+          </div>
+          <div>
+            <div class="splash-feature-title">100% Private</div>
+            <div class="splash-feature-desc">Your data never leaves your browser</div>
+          </div>
+        </div>
+        <div class="splash-feature">
+          <div class="splash-feature-icon templates">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20">
+              <rect x="3" y="3" width="7" height="9" rx="1"/>
+              <rect x="14" y="3" width="7" height="5" rx="1"/>
+              <rect x="14" y="12" width="7" height="9" rx="1"/>
+              <rect x="3" y="16" width="7" height="5" rx="1"/>
+            </svg>
+          </div>
+          <div>
+            <div class="splash-feature-title">8 Beautiful Templates</div>
+            <div class="splash-feature-desc">Pick a style that matches your brand</div>
+          </div>
+        </div>
+      </div>
+
+      <button class="splash-cta" id="splashCta" onclick="EliteSplash.dismiss()">
+        <span>Get Started</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16">
+          <line x1="5" y1="12" x2="19" y2="12"/>
+          <polyline points="12 5 19 12 12 19"/>
+        </svg>
+      </button>
+      <p class="splash-note">No account required &nbsp;·&nbsp; Free forever</p>
+    </div>
+  </div>
+
+
   <div class="sidebar-overlay" id="sidebarOverlay" onclick="App.closeSidebar()"></div>
 
   <button class="hamburger" id="hamburgerBtn" onclick="App.toggleSidebar()" aria-label="Open menu">
@@ -712,6 +794,125 @@
             <div class="template-info">
               <div class="template-name">Slate</div>
               <div class="template-desc">Earthy tones with a left-aligned biz block. Warm and modern.</div>
+            </div>
+            <div class="template-check">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+          </div>
+
+          <!-- Ocean -->
+          <div class="template-card" data-tpl="ocean" onclick="App.selectTemplate('ocean')">
+            <div class="template-preview tpl-ocean">
+              <div class="tpl-prev-bar ocean"></div>
+              <div class="tpl-prev-header">
+                <div class="tpl-prev-biz">
+                  <div class="tpl-prev-logo ocean"></div>
+                  <div>
+                    <div class="tpl-prev-bizname ocean"></div>
+                    <div class="tpl-prev-line sm"></div>
+                  </div>
+                </div>
+                <div class="tpl-prev-meta">
+                  <div class="tpl-prev-invnum ocean"></div>
+                  <div class="tpl-prev-line sm"></div>
+                  <div class="tpl-prev-line sm"></div>
+                </div>
+              </div>
+              <div class="tpl-prev-billtobg ocean"></div>
+              <div class="tpl-prev-tablehead ocean"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-total ocean"></div>
+            </div>
+            <div class="template-info">
+              <div class="template-name">Ocean</div>
+              <div class="template-desc">Cool teal tones with a gradient bar. Fresh and modern.</div>
+            </div>
+            <div class="template-check">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+          </div>
+
+          <!-- Rose -->
+          <div class="template-card" data-tpl="rose" onclick="App.selectTemplate('rose')">
+            <div class="template-preview tpl-rose">
+              <div class="tpl-prev-header-band rose">
+                <div class="tpl-prev-biz light">
+                  <div class="tpl-prev-logo light"></div>
+                  <div>
+                    <div class="tpl-prev-bizname light"></div>
+                    <div class="tpl-prev-line sm light"></div>
+                  </div>
+                </div>
+                <div class="tpl-prev-invnum-bold rose">INV</div>
+              </div>
+              <div class="tpl-prev-billtobg rose"></div>
+              <div class="tpl-prev-tablehead rose"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-total rose"></div>
+            </div>
+            <div class="template-info">
+              <div class="template-name">Rose</div>
+              <div class="template-desc">Warm rose header with burgundy accents. Elegant and bold.</div>
+            </div>
+            <div class="template-check">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+          </div>
+
+          <!-- Midnight -->
+          <div class="template-card" data-tpl="midnight" onclick="App.selectTemplate('midnight')">
+            <div class="template-preview tpl-midnight">
+              <div class="tpl-prev-header-band midnight">
+                <div class="tpl-prev-biz light">
+                  <div class="tpl-prev-logo midnight-logo"></div>
+                  <div>
+                    <div class="tpl-prev-bizname light"></div>
+                    <div class="tpl-prev-line sm light"></div>
+                  </div>
+                </div>
+                <div class="tpl-prev-invnum-bold midnight">INV</div>
+              </div>
+              <div class="tpl-prev-billtobg midnight"></div>
+              <div class="tpl-prev-tablehead midnight"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-total midnight"></div>
+            </div>
+            <div class="template-info">
+              <div class="template-name">Midnight</div>
+              <div class="template-desc">Deep navy header with gold accents. Prestigious and refined.</div>
+            </div>
+            <div class="template-check">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+          </div>
+
+          <!-- Forest -->
+          <div class="template-card" data-tpl="forest" onclick="App.selectTemplate('forest')">
+            <div class="template-preview tpl-forest">
+              <div class="tpl-prev-forest-top">
+                <div class="tpl-prev-bizname forest"></div>
+                <div class="tpl-prev-line sm forest"></div>
+              </div>
+              <div class="tpl-prev-slate-meta">
+                <div class="tpl-prev-invnum forest"></div>
+                <div class="tpl-prev-line sm"></div>
+                <div class="tpl-prev-line sm"></div>
+              </div>
+              <div class="tpl-prev-billtobg forest"></div>
+              <div class="tpl-prev-tablehead forest"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-row"></div>
+              <div class="tpl-prev-total forest"></div>
+            </div>
+            <div class="template-info">
+              <div class="template-name">Forest</div>
+              <div class="template-desc">Deep green tones with earthy warmth. Grounded and trustworthy.</div>
             </div>
             <div class="template-check">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
