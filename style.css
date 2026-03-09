@@ -1100,7 +1100,7 @@ body { display: flex; min-height: 100vh; }
 
   /* ── Hide all UI chrome ── */
   .sidebar, .view-header, .magic-card, .table-actions,
-  .no-print, .hamburger, .sidebar-overlay, .app-footer,
+  .no-print, .hamburger, .mobile-brand-pill, .mobile-top-blur, .sidebar-overlay, .app-footer,
   #toast, .modal-overlay, .revenue-dashboard,
   .edit-mode-banner, .del-row-btn, .col-del { display: none !important; }
   #view-history, #view-settings, #view-templates, #view-help { display: none !important; }
