@@ -28,6 +28,7 @@ function kvDelete(key) {
   return Promise.resolve();
 }
 const LS_LOGO_KEY  = 'eliteinvoice_logo_b64';   // base64 data-URL stored in localStorage
+const KV_TEMPLATE  = 'eliteinvoice_template';
 
 const CCY_META = {
   '$':   { code: 'USD', symbol: '$'   },
@@ -83,6 +84,7 @@ const App = (() => {
   /* ══════════ INIT ══════════ */
   async function init() {
     initTheme();
+    initTemplate();
     // Set up dates and defaults immediately — never blocked by network
     const today = new Date();
     document.getElementById('invoiceDate').value  = fmtDate(today);
@@ -95,7 +97,7 @@ const App = (() => {
     await loadSettings().catch(e => console.warn('loadSettings failed:', e));
     await resolveInvoiceNumber().catch(e => {
       console.warn('resolveInvoiceNumber failed:', e);
-      document.getElementById('invoiceNumber').textContent = '#INV-0001';
+      document.getElementById('invoiceNumber').value = '#INV-0001';
     });
 
     fetchFxRates().catch(e => console.warn('FX fetch failed on init:', e));
@@ -245,10 +247,10 @@ const App = (() => {
     try {
       const counter = await kvGet(KV_COUNTER);
       const num = counter ? parseInt(counter) : 0;
-      document.getElementById('invoiceNumber').textContent =
+      document.getElementById('invoiceNumber').value =
         '#INV-' + String(num + 1).padStart(4, '0');
     } catch (e) {
-      document.getElementById('invoiceNumber').textContent = '#INV-0001';
+      document.getElementById('invoiceNumber').value = '#INV-0001';
     }
   }
 
@@ -457,7 +459,7 @@ const App = (() => {
     const tax      = subtotal * (taxPct / 100);
     const total    = subtotal + tax;
     return {
-      id:          document.getElementById('invoiceNumber').textContent,
+      id:          document.getElementById('invoiceNumber').value.trim(),
       date:        document.getElementById('invoiceDate').value,
       due:         document.getElementById('invoiceDue').value,
       clientName:  document.getElementById('clientName').value,
@@ -481,10 +483,106 @@ const App = (() => {
     if (!hasItems) { showToast('Add at least one item with a description and price before saving.'); return; }
     const clientName = document.getElementById('clientName').value.trim();
     if (!clientName) { showToast('Please enter a client name before saving.'); return; }
+
     const invoice = _buildInvoiceFromForm(null);
+    let invoices = [];
     try {
       const raw = await kvGet(KV_INVOICES);
-      const invoices = raw ? JSON.parse(raw) : [];
+      invoices = raw ? JSON.parse(raw) : [];
+    } catch (e) { invoices = []; }
+
+    // ── Duplicate invoice number check ──
+    const dupId = invoices.find(inv => inv.id === invoice.id);
+    if (dupId) {
+      showToast(`Invoice number ${invoice.id} already exists. Please use a different number.`);
+      document.getElementById('invoiceNumber').focus();
+      document.getElementById('invoiceNumber').select();
+      return;
+    }
+
+    // ── Similarity check ──
+    const similar = _findSimilarInvoices(invoice, invoices);
+    if (similar.length > 0) {
+      _showSimilarDialog(similar, invoice, invoices);
+      return;
+    }
+
+    await _doSaveInvoice(invoice, invoices);
+  }
+
+  /* ── Similarity scoring ── */
+  function _similarity(a, b) {
+    // Normalise strings for comparison
+    const norm = s => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const clientScore = norm(a.clientName) === norm(b.clientName) ? 1 :
+      (norm(a.clientName).includes(norm(b.clientName)) || norm(b.clientName).includes(norm(a.clientName))) ? 0.7 : 0;
+    const aDescs = a.items.map(i => norm(i.desc));
+    const bDescs = b.items.map(i => norm(i.desc));
+    const itemMatches = aDescs.filter(d => bDescs.some(bd => bd === d || bd.includes(d) || d.includes(bd))).length;
+    const itemScore = Math.max(aDescs.length, bDescs.length) > 0
+      ? itemMatches / Math.max(aDescs.length, bDescs.length) : 0;
+    // Weight: client 50%, items 50%
+    return clientScore * 0.5 + itemScore * 0.5;
+  }
+
+  function _findSimilarInvoices(invoice, invoices) {
+    return invoices
+      .map((inv, idx) => ({ inv, idx, score: _similarity(invoice, inv) }))
+      .filter(({ score }) => score >= 0.75)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+  }
+
+  /* ── Similar invoice dialog ── */
+  function _showSimilarDialog(matches, pendingInvoice, allInvoices) {
+    const fmt = (inv) => {
+      const pct = inv.score >= 1 ? '100' : Math.round(inv.score * 100);
+      return `<div class="similar-match-item">
+        <div class="similar-match-info">
+          <span class="similar-match-id">${escHtml(inv.inv.id)}</span>
+          <span class="similar-match-client">${escHtml(inv.inv.clientName)}</span>
+          <span class="similar-match-date">${inv.inv.date || '—'}</span>
+        </div>
+        <span class="similar-match-score">${pct}% match</span>
+      </div>`;
+    };
+    document.getElementById('similarTitle').textContent =
+      matches.length === 1 ? 'Similar invoice found' : `${matches.length} similar invoices found`;
+    document.getElementById('similarSubtitle').textContent =
+      'This invoice looks similar to one already saved. Review before saving.';
+    document.getElementById('similarMatches').innerHTML = matches.map(fmt).join('');
+
+    const dialog = document.getElementById('similarDialog');
+    dialog.classList.add('visible');
+    document.body.style.overflow = 'hidden';
+
+    const cleanup = () => {
+      dialog.classList.remove('visible');
+      document.body.style.overflow = '';
+      ['similarCancel','similarViewBtn','similarSaveAnyway'].forEach(id => {
+        const el = document.getElementById(id);
+        el.replaceWith(el.cloneNode(true));
+      });
+    };
+
+    document.getElementById('similarCancel').addEventListener('click', cleanup);
+
+    document.getElementById('similarViewBtn').addEventListener('click', () => {
+      cleanup();
+      // Navigate to history and load the closest match
+      navigate('history');
+      setTimeout(() => loadInvoiceToEditor(matches[0].idx), 300);
+    });
+
+    document.getElementById('similarSaveAnyway').addEventListener('click', async () => {
+      cleanup();
+      await _doSaveInvoice(pendingInvoice, allInvoices);
+    });
+  }
+
+  /* ── Actual persist ── */
+  async function _doSaveInvoice(invoice, invoices) {
+    try {
       invoices.unshift(invoice);
       await kvSet(KV_INVOICES, JSON.stringify(invoices));
       const rawCounter = await kvGet(KV_COUNTER);
@@ -832,7 +930,7 @@ const App = (() => {
       for (let opt of sel.options) {
         if (opt.value === currentCurrency) { sel.value = currentCurrency; break; }
       }
-      document.getElementById('invoiceNumber').textContent = inv.id;
+      document.getElementById('invoiceNumber').value = inv.id;
       document.getElementById('invoiceDate').value         = inv.date;
       document.getElementById('invoiceDue').value          = inv.due;
       document.getElementById('clientName').value          = inv.clientName;
@@ -1089,6 +1187,32 @@ const App = (() => {
     reader.readAsText(file);
   }
 
+
+  /* ══════════ TEMPLATES ══════════ */
+  const TEMPLATES = ['classic', 'minimal', 'bold', 'slate'];
+
+  function initTemplate() {
+    const saved = localStorage.getItem(KV_TEMPLATE) || 'classic';
+    applyTemplate(saved, false);
+  }
+
+  function applyTemplate(name, save = true) {
+    const doc = document.getElementById('invoiceDocument');
+    if (!doc) return;
+    TEMPLATES.forEach(t => doc.classList.remove('tpl-' + t));
+    doc.classList.add('tpl-' + name);
+    // Update selected state in template picker
+    document.querySelectorAll('.template-card').forEach(card => {
+      card.classList.toggle('selected', card.dataset.tpl === name);
+    });
+    if (save) localStorage.setItem(KV_TEMPLATE, name);
+  }
+
+  function selectTemplate(name) {
+    applyTemplate(name, true);
+    showToast('Template applied: ' + name.charAt(0).toUpperCase() + name.slice(1));
+  }
+
   /* ══════════ PUBLIC API ══════════ */
   return {
     init, navigate,
@@ -1103,7 +1227,8 @@ const App = (() => {
     copyEmailDraft, openInMailClient,
     exportInvoices, importInvoices,
     toggleTheme,
-    calculateTotalRevenue
+    calculateTotalRevenue,
+    selectTemplate, applyTemplate
   };
 })();
 
