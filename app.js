@@ -969,7 +969,7 @@ const App = (() => {
       `Due Date: ${dueDateFormatted}\n` +
       `Status: ${overdueContext}\n` +
       `Tone required: ${tone.label}`;
-    try {
+    const attemptFetch = async () => {
       const res = await fetch(WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -980,8 +980,29 @@ const App = (() => {
           ]
         })
       });
-      if (!res.ok) throw new Error(`Worker responded HTTP ${res.status}`);
-      const data = await res.json();
+      if (!res.ok) {
+        // Read the body so we can surface the real upstream error message
+        let detail = '';
+        try { const errData = await res.json(); detail = errData.error || errData.message || JSON.stringify(errData); }
+        catch (_) { try { detail = await res.text(); } catch (_) {} }
+        throw new Error(`HTTP ${res.status}${detail ? ': ' + detail : ''}`);
+      }
+      return res.json();
+    };
+
+    try {
+      let data;
+      try {
+        data = await attemptFetch();
+      } catch (firstErr) {
+        // One automatic retry after 1.5s for transient 502/503
+        if (firstErr.message.startsWith('HTTP 5')) {
+          await new Promise(r => setTimeout(r, 1500));
+          data = await attemptFetch();
+        } else {
+          throw firstErr;
+        }
+      }
       if (data.error) throw new Error(data.error);
       const rawText = data.content || '';
       const subjectMatch = rawText.match(/^SUBJECT:\s*(.+)/im);
