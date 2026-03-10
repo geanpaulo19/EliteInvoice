@@ -236,6 +236,7 @@ const App = (() => {
     });
     if (view === 'history') loadHistory();
     closeSidebar();
+    if (window.innerWidth < 768) window.scrollTo({ top: 0, behavior: 'instant' });
   }
 
   /* ══════════ SIDEBAR ══════════ */
