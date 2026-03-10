@@ -1260,8 +1260,15 @@ const App = (() => {
 
   function toggleTheme() {
     const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('eliteinvoice_theme', next);
+    const apply = () => {
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('eliteinvoice_theme', next);
+    };
+    if (!document.startViewTransition) { apply(); return; }
+    document.documentElement.classList.add('theme-transitioning');
+    document.startViewTransition(apply).finished.finally(() => {
+      document.documentElement.classList.remove('theme-transitioning');
+    });
   }
   function initTheme() {
     const saved = localStorage.getItem('eliteinvoice_theme') ||
