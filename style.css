@@ -2141,7 +2141,7 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   .mobile-tab-bar {
     display: flex;
     position: fixed;
-    bottom: 10px; left: 16px; right: 16px;
+    bottom: 10px; left: 32px; right: 32px;
     z-index: 200;
     background: rgba(255, 255, 255, 0.45);
     backdrop-filter: blur(40px) saturate(200%) brightness(1.1);
