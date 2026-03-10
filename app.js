@@ -1296,12 +1296,64 @@ const App = (() => {
         const parsed = JSON.parse(e.target.result);
         const incoming = parsed.invoices || (Array.isArray(parsed) ? parsed : null);
         if (!incoming) throw new Error('Unrecognised file format.');
+
         const raw = localStorage.getItem(KV_INVOICES);
         const existing = raw ? JSON.parse(raw) : [];
-        const ids = new Set(existing.map(i => i.id));
-        const merged = [...existing, ...incoming.filter(i => !ids.has(i.id))];
+
+        // Build lookup: id → invoice (for conflict detection)
+        const existingById = {};
+        existing.forEach(inv => { existingById[inv.id] = inv; });
+
+        // Build set of ALL ids currently in system (grows as we assign new ones)
+        const allIds = new Set(existing.map(i => i.id));
+
+        // Fingerprint an invoice by its content (excluding the id field)
+        const fingerprint = inv => {
+          const { id, ...rest } = inv;
+          return JSON.stringify(rest);
+        };
+
+        // Generate a unique id that doesn't clash with allIds
+        const makeUniqueId = (baseId) => {
+          let suffix = 2;
+          let candidate = `${baseId}-IMP${suffix}`;
+          while (allIds.has(candidate)) {
+            suffix++;
+            candidate = `${baseId}-IMP${suffix}`;
+          }
+          return candidate;
+        };
+
+        let countAdded = 0, countSkipped = 0, countRenamed = 0;
+        const toAdd = [];
+
+        incoming.forEach(inv => {
+          if (!allIds.has(inv.id)) {
+            // No conflict — import as-is
+            toAdd.push(inv);
+            allIds.add(inv.id);
+            countAdded++;
+          } else if (fingerprint(inv) === fingerprint(existingById[inv.id])) {
+            // Exact duplicate — skip silently
+            countSkipped++;
+          } else {
+            // Same ID, different content — re-ID and import
+            const newId = makeUniqueId(inv.id);
+            toAdd.push({ ...inv, id: newId });
+            allIds.add(newId);
+            countAdded++;
+            countRenamed++;
+          }
+        });
+
+        const merged = [...existing, ...toAdd];
         localStorage.setItem(KV_INVOICES, JSON.stringify(merged));
-        showToast(`${incoming.length} invoice${incoming.length > 1 ? 's' : ''} imported (${merged.length - existing.length} new).`);
+
+        const parts = [];
+        if (countAdded)   parts.push(`${countAdded} imported`);
+        if (countRenamed) parts.push(`${countRenamed} renamed to avoid conflicts`);
+        if (countSkipped) parts.push(`${countSkipped} duplicate${countSkipped > 1 ? 's' : ''} skipped`);
+        showToast(parts.join(' · ') || 'Nothing new to import.');
         loadHistory();
       } catch (err) { showToast('Import failed: ' + err.message); }
       input.value = '';
