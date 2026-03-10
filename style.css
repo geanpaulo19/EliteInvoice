@@ -32,6 +32,7 @@
 [data-theme="dark"] #magicInput{background:#2c2c2e;color:#f5f5f7;border-color:#3a3a3c}
 [data-theme="dark"] #magicInput:focus{background:#3a3a3c;border-color:var(--accent);color:#f5f5f7}
 [data-theme="dark"] .history-card{background:#2c2c2e;border-color:#3a3a3c}
+[data-theme="dark"] .history-card-actions{border-top-color:#3a3a3c}
 [data-theme="dark"] .settings-card{background:#2c2c2e;border-color:#3a3a3c}
 [data-theme="dark"] .magic-box,[data-theme="dark"] .magic-card{background:#2c2c2e;border-color:#3a3a3c}
 [data-theme="dark"] .modal-box{background:#2c2c2e}
