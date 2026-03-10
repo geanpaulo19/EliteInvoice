@@ -221,9 +221,18 @@ const App = (() => {
   /* ══════════ NAVIGATION ══════════ */
   function navigate(view) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    document.getElementById('view-' + view).classList.add('active');
+    const target = document.getElementById('view-' + view);
+    // Force animation replay
+    target.style.animation = 'none';
+    target.offsetHeight; // reflow
+    target.style.animation = '';
+    target.classList.add('active');
     document.querySelectorAll('.nav-item').forEach(n => {
       n.classList.toggle('active', n.dataset.view === view);
+    });
+    // Sync mobile tab bar
+    document.querySelectorAll('.tab-item').forEach(t => {
+      t.classList.toggle('active', t.dataset.view === view);
     });
     if (view === 'history') loadHistory();
     closeSidebar();
@@ -1306,6 +1315,8 @@ const App = (() => {
     if (!doc) return;
     TEMPLATES.forEach(t => doc.classList.remove('tpl-' + t));
     doc.classList.add('tpl-' + name);
+    // Drive tab bar accent via data attribute on body
+    document.body.dataset.template = name;
     // Update selected state in template picker
     document.querySelectorAll('.template-card').forEach(card => {
       card.classList.toggle('selected', card.dataset.tpl === name);
