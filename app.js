@@ -220,8 +220,10 @@ const App = (() => {
 
   /* ══════════ NAVIGATION ══════════ */
   function navigate(view) {
-    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    // Bug fix: guard against missing view element
     const target = document.getElementById('view-' + view);
+    if (!target) { console.warn('navigate: unknown view', view); return; }
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     // Force animation replay
     target.style.animation = 'none';
     target.offsetHeight; // reflow
@@ -617,8 +619,18 @@ const App = (() => {
     try {
       invoices.unshift(invoice);
       await kvSet(KV_INVOICES, JSON.stringify(invoices));
-      const rawCounter = await kvGet(KV_COUNTER);
-      await kvSet(KV_COUNTER, String(parseInt(rawCounter || '0') + 1));
+      // Sync counter to the actual invoice number if it's in #INV-XXXX format
+      const match = invoice.id.match(/#?INV-(\d+)/i);
+      if (match) {
+        const invoiceNum = parseInt(match[1]);
+        const rawCounter = await kvGet(KV_COUNTER);
+        const currentCounter = parseInt(rawCounter || '0');
+        await kvSet(KV_COUNTER, String(Math.max(currentCounter, invoiceNum)));
+      } else {
+        // Custom format — just bump the counter by 1
+        const rawCounter = await kvGet(KV_COUNTER);
+        await kvSet(KV_COUNTER, String(parseInt(rawCounter || '0') + 1));
+      }
       showToast('Invoice saved successfully!');
       await resolveInvoiceNumber();
     } catch (e) {
@@ -674,6 +686,8 @@ const App = (() => {
     document.getElementById('magicInput').value = '';
     document.getElementById('magicStatus').textContent = '';
     document.getElementById('taxRateInput').value = DEFAULT_TAX_RATE;
+    // Bug fix: always reset edit mode so Update/Cancel buttons don't stay visible
+    setEditMode(null);
     addRow();
     showToast('Invoice cleared.');
   }
@@ -689,10 +703,11 @@ const App = (() => {
   }
 
   function getTone(days) {
-    if (days === null || days < 0) return { key: 'upcoming', label: 'Gentle Heads-up', emoji: '📅' };
-    if (days <= 7) return { key: 'friendly', label: 'Friendly Reminder', emoji: '🔔' };
-    if (days <= 13) return { key: 'gentle', label: 'Gentle Follow-up', emoji: '🔔' };
-    return { key: 'firm', label: 'Firm Follow-up', emoji: '⚠️' };
+    if (days === null || days < 0) return { key: 'upcoming', label: 'Gentle Heads-up',    emoji: '📅' };
+    if (days === 0)                return { key: 'friendly',  label: 'Friendly Reminder',  emoji: '🔔' };
+    if (days <= 7)                 return { key: 'gentle',    label: 'Gentle Follow-up',   emoji: '🔔' };
+    if (days <= 14)                return { key: 'friendly',  label: 'Friendly Reminder',  emoji: '🔔' };
+    return                              { key: 'firm',      label: 'Firm Follow-up',     emoji: '⚠️' };
   }
 
   /* ══════════ REVENUE DASHBOARD ══════════ */
@@ -907,15 +922,15 @@ const App = (() => {
 
   /* ══════════ AI FOLLOW-UP EMAIL MODAL ══════════ */
   async function openEmailModal(idx) {
-    let invoices = [];
+    // Bug fix: always re-read from storage — idx from rendered cards may be stale
+    // after a delete/import happened since last render
+    let inv;
     try {
       const rawEM = await kvGet(KV_INVOICES);
-      invoices = rawEM ? JSON.parse(rawEM) : [];
+      const invoices = rawEM ? JSON.parse(rawEM) : [];
+      inv = invoices[idx];
     } catch (e) { showToast('Could not load invoice data.'); return; }
-    const inv = invoices[idx];
     if (!inv) { showToast('Invoice not found.'); return; }
-
-    const workerUrl = WORKER_URL;
 
     const modal = document.getElementById('emailModal');
     modal.classList.add('visible');
@@ -940,9 +955,9 @@ const App = (() => {
       'You are a professional business assistant. Based on the provided invoice data, ' +
       'write a polite but clear follow-up email.\n' +
       '- If it\'s not due yet, write a "Gentle Heads-up".\n' +
-      '- If it\'s 1–7 days late, write a "Friendly Reminder".\n' +
-      '- If it\'s 8–13 days late, write a "Friendly Reminder" with slightly more urgency.\n' +
-      '- If it\'s 14+ days late, write a "Firm Follow-up".\n' +
+      '- If it\'s 1–7 days late, write a "Gentle Follow-up".\n' +
+      '- If it\'s 8–14 days late, write a "Friendly Reminder" with more urgency.\n' +
+      '- If it\'s 15+ days late, write a "Firm Follow-up".\n' +
       'Include the invoice number and a "Pay Now" link placeholder: [PAY NOW LINK].\n' +
       'Output ONLY the email in this exact format (no extra text, no markdown):\n' +
       'SUBJECT: <subject line here>\n\n<email body here>';
@@ -955,7 +970,7 @@ const App = (() => {
       `Status: ${overdueContext}\n` +
       `Tone required: ${tone.label}`;
     try {
-      const res = await fetch(workerUrl, {
+      const res = await fetch(WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1030,29 +1045,33 @@ const App = (() => {
       const rawInv = await kvGet(KV_INVOICES);
       let invoices = rawInv ? JSON.parse(rawInv) : [];
       const inv = invoices[idx];
-      if (!inv) return;
+      if (!inv) { showToast('Invoice not found.'); return; }
       currentCurrency = inv.currency || '$';
       const sel = document.getElementById('currencySelect');
       for (let opt of sel.options) {
         if (opt.value === currentCurrency) { sel.value = currentCurrency; break; }
       }
-      document.getElementById('invoiceNumber').value = inv.id;
-      document.getElementById('invoiceDate').value = inv.date;
-      document.getElementById('invoiceDue').value = inv.due;
-      document.getElementById('clientName').value = inv.clientName;
-      document.getElementById('clientEmail').value = inv.clientEmail;
-      document.getElementById('clientAddress').value = inv.clientAddr;
-      document.getElementById('invoiceNotes').value = inv.notes;
-      document.getElementById('taxRateInput').value = inv.taxPct;
+      // Bug fix: guard all fields against null/undefined rendering as the string "null"
+      document.getElementById('invoiceNumber').value  = inv.id          || '';
+      document.getElementById('invoiceDate').value    = inv.date        || '';
+      document.getElementById('invoiceDue').value     = inv.due         || '';
+      document.getElementById('clientName').value     = inv.clientName  || '';
+      document.getElementById('clientEmail').value    = inv.clientEmail || '';
+      document.getElementById('clientAddress').value  = inv.clientAddr  || '';
+      document.getElementById('invoiceNotes').value   = inv.notes       || '';
+      document.getElementById('taxRateInput').value   = inv.taxPct      ?? DEFAULT_TAX_RATE;
       document.getElementById('invoiceBody').innerHTML = '';
-      inv.items.forEach(item => addRow(item.desc, item.qty, item.price));
+      (inv.items || []).forEach(item => addRow(item.desc || '', item.qty ?? 1, item.price ?? ''));
 
       // Enter edit mode — toolbar swaps to Update + Cancel Edit
       setEditMode(idx);
 
       navigate('invoice');
       showToast(`Editing ${inv.id} — make changes and click Update Invoice.`);
-    } catch (e) { showToast('Failed to load invoice.'); }
+    } catch (e) {
+      console.error('loadInvoiceToEditor error:', e);
+      showToast('Failed to load invoice.');
+    }
   }
 
   /* ══════════ DELETE INVOICE ══════════ */
