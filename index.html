@@ -1078,6 +1078,26 @@
           </div>
         </header>
 
+        <!-- About -->
+        <div class="help-about">
+          <div class="help-about-logo">
+            <svg viewBox="0 0 28 28" fill="none" width="36" height="36">
+              <rect width="28" height="28" rx="7" fill="#0071e3"/>
+              <path d="M7 20L11 8H14L17 16L19 11H22L18 20H15L12 12L10 20H7Z" fill="white"/>
+            </svg>
+          </div>
+          <div class="help-about-body">
+            <div class="help-about-title">EliteInvoice</div>
+            <p class="help-about-text">A free, privacy-first invoicing tool that runs entirely in your browser — no account, no server, no subscription. Create professional invoices in seconds, pick from 8 beautiful templates, auto-fill with AI, track your revenue across currencies, and export to PDF. Everything stays on your device.</p>
+            <div class="help-about-tags">
+              <span class="help-about-tag">🔒 100% Private</span>
+              <span class="help-about-tag">⚡ Works Offline</span>
+              <span class="help-about-tag">✦ AI-Powered</span>
+              <span class="help-about-tag">🆓 Free Forever</span>
+            </div>
+          </div>
+        </div>
+
         <!-- Quick Start Cards -->
         <div class="help-quick-cards">
           <div class="help-quick-card">
@@ -1136,194 +1156,137 @@
           <div class="faq-item">
             <button class="faq-question" onclick="toggleFaq(this)">
               <span>How do I create my first invoice?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
-                height="16">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div class="faq-answer">
-              <p>Go to <strong>New Invoice</strong> from the sidebar. Fill in your client's name, email, and address.
-                Add line items by clicking <strong>+ Add Row</strong> — each row has a description, quantity, and unit
-                price. The total updates automatically. When ready, click <strong>Save Invoice</strong>.</p>
+              <p>Go to <strong>New Invoice</strong> from the sidebar (desktop) or bottom tab bar (mobile). Fill in your client's name, email, and address. Add line items with <strong>+ Add Row</strong> — each row has a description, quantity, and unit price. The total updates automatically. When ready, click <strong>Save Invoice</strong>.</p>
             </div>
           </div>
 
           <div class="faq-item">
             <button class="faq-question" onclick="toggleFaq(this)">
               <span>What is AI Magic Input and how does it work?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
-                height="16">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div class="faq-answer">
-              <p>AI Magic Input lets you describe your invoice in plain text and have it auto-filled. For example, paste
-                something like: <em>"Invoice for Acme Corp, 3 hours of web design at $150/hr and 1 domain registration
-                  for $15. Due in 30 days."</em> — and the AI will extract the client, line items, amounts, and due date
-                automatically. Click the <strong>✦ Magic</strong> button at the top of the New Invoice page to expand
-                it.</p>
+              <p>AI Magic Input lets you describe your invoice in plain text and have it auto-filled. For example: <em>"Invoice for Acme Corp, 3 hours of web design at $150/hr and 1 domain registration for $15. Due in 30 days."</em> — the AI extracts client details, line items, amounts, and due date automatically. Click the <strong>✦ Magic</strong> button at the top of the New Invoice page to expand it. Powered by Cloudflare Workers AI.</p>
             </div>
           </div>
 
           <div class="faq-item">
             <button class="faq-question" onclick="toggleFaq(this)">
               <span>Where is my data stored? Is it safe?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
-                height="16">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div class="faq-answer">
-              <p>All your invoices and settings are stored locally in your browser's <strong>localStorage</strong> —
-                nothing is sent to any server. Your data stays on your device. This also means clearing your browser
-                data will erase your invoices, so use the <strong>Export</strong> feature in Saved Invoices regularly to
-                keep backups.</p>
+              <p>Everything is stored locally in your browser's <strong>localStorage</strong> — nothing is sent to any server. Your data never leaves your device. This means clearing browser data will erase your invoices, so use the <strong>Export</strong> feature in Saved Invoices regularly as a backup.</p>
             </div>
           </div>
 
           <div class="faq-item">
             <button class="faq-question" onclick="toggleFaq(this)">
               <span>How do I back up and restore my invoices?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
-                height="16">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div class="faq-answer">
-              <p>In <strong>Saved Invoices</strong>, use the <strong>Export</strong> button to download a
-                <code>.json</code> backup file of all your invoices. To restore, click <strong>Import</strong> and
-                select your backup file — it will merge with your existing invoices and skip any duplicates
-                automatically.
-              </p>
+              <p>In <strong>Saved Invoices</strong>, click <strong>Export</strong> to download a <code>.json</code> backup of all your invoices. To restore, click <strong>Import</strong> and select your file — it merges with existing invoices and skips duplicates automatically.</p>
             </div>
           </div>
 
           <div class="faq-item">
             <button class="faq-question" onclick="toggleFaq(this)">
               <span>How do I edit a saved invoice?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
-                height="16">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div class="faq-answer">
-              <p>Open <strong>Saved Invoices</strong>, find your invoice, and click the <strong>Edit</strong> button.
-                This loads it back into the invoice editor with a green edit-mode indicator. Make your changes and click
-                <strong>Update Invoice</strong> to save. You can also click <strong>Cancel</strong> to discard changes.
-              </p>
+              <p>Open <strong>Saved Invoices</strong>, find your invoice, and click <strong>Edit</strong>. This loads it into the editor with a green edit-mode indicator. Make your changes and click <strong>Update Invoice</strong> to save, or <strong>Cancel</strong> to discard.</p>
             </div>
           </div>
 
           <div class="faq-item">
             <button class="faq-question" onclick="toggleFaq(this)">
               <span>How do I print or save an invoice as PDF?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
-                height="16">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div class="faq-answer">
-              <p>Click the <strong>Print</strong> button on any invoice. Your browser's print dialog will open. To save
-                as PDF, choose <strong>"Save as PDF"</strong> as the destination (available in Chrome, Edge, Firefox,
-                and Safari). The invoice is formatted for A4 with clean print styles — the sidebar, buttons, and UI
-                elements are all hidden automatically.</p>
+              <p>Click the <strong>Print</strong> button on any invoice. To save as PDF, choose <strong>"Save as PDF"</strong> in the browser's print dialog (available in Chrome, Edge, Firefox, and Safari). The invoice is formatted for A4 — all UI elements like the sidebar, buttons, and navigation are hidden automatically.</p>
             </div>
           </div>
 
           <div class="faq-item">
             <button class="faq-question" onclick="toggleFaq(this)">
               <span>How do I send an invoice by email?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
-                height="16">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div class="faq-answer">
-              <p>From <strong>Saved Invoices</strong>, click <strong>Draft Email</strong> on any invoice. EliteInvoice
-                will generate a professional email draft based on the invoice details and how overdue it is. You can
-                copy the draft to your clipboard or open it directly in your default mail app.</p>
+              <p>From <strong>Saved Invoices</strong>, click <strong>Draft Email</strong> on any invoice. EliteInvoice generates a professional email based on the invoice details and overdue status. Copy the draft to clipboard or open it directly in your default mail app.</p>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question" onclick="toggleFaq(this)">
+              <span>How do I change the invoice template?</span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="faq-answer">
+              <p>Go to <strong>Templates</strong> from the sidebar or bottom tab bar. Choose from 8 designs: <strong>Classic, Minimal, Bold, Slate, Ocean, Rose, Midnight,</strong> and <strong>Forest</strong>. Your selection is saved and applies to all invoices. On mobile, the bottom tab bar tints to match your chosen template's accent color.</p>
             </div>
           </div>
 
           <div class="faq-item">
             <button class="faq-question" onclick="toggleFaq(this)">
               <span>How do I change the currency or add tax?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
-                height="16">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div class="faq-answer">
-              <p>Select a currency from the dropdown in the top-right of the <strong>New Invoice</strong> view — 20
-                currencies with country flags are available. For tax, use the <strong>Tax %</strong> field at the bottom
-                of the invoice — enter a percentage (e.g. <code>10</code> for 10%) and the subtotal, tax, and total will
-                update live.</p>
+              <p>Select a currency from the dropdown in the top-right of the <strong>New Invoice</strong> view — 20 currencies with country flags are available. For tax, use the <strong>Tax %</strong> field at the bottom of the invoice — enter a percentage (e.g. <code>10</code> for 10%) and totals update live.</p>
             </div>
           </div>
 
           <div class="faq-item">
             <button class="faq-question" onclick="toggleFaq(this)">
-              <span>How does Total Revenue calculation work?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
-                height="16">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
+              <span>How does the Total Revenue dashboard work?</span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div class="faq-answer">
-              <p>The revenue dashboard at the top of <strong>Saved Invoices</strong> totals all your invoices in your
-                chosen base currency. Live exchange rates are fetched via <strong>Frankfurter</strong> (with
-                open.er-api.com as a fallback). Set your base currency in <strong>Settings → Base Currency</strong> and
-                click Apply.</p>
+              <p>The revenue dashboard at the top of <strong>Saved Invoices</strong> totals all invoices converted to your base currency using live exchange rates via <strong>Frankfurter</strong> (with open.er-api.com as fallback). Set your base currency in <strong>Settings → Base Currency</strong> and click Apply.</p>
             </div>
           </div>
 
           <div class="faq-item">
             <button class="faq-question" onclick="toggleFaq(this)">
               <span>How do I switch between light and dark mode?</span>
-              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"
-                height="16">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div class="faq-answer">
-              <p>Go to <strong>Settings</strong> and click the <strong>Light Mode / Dark Mode</strong> toggle button in
-                the top-right corner of the header. Your preference is saved automatically and will persist across
-                sessions. The app also respects your system preference on first visit.</p>
+              <p>On <strong>desktop</strong>, click the theme toggle button in the top-right of the <strong>Settings</strong> page. On <strong>mobile</strong>, tap the sun/moon circle in the top-right corner of the header. Your preference is saved and persists across sessions.</p>
             </div>
           </div>
 
         </div>
 
-        <!-- Tips section -->
+        <!-- Pro Tips -->
         <div class="help-section-title" style="margin-top:32px;">Pro Tips</div>
         <div class="help-tips">
           <div class="help-tip">
             <span class="help-tip-num">01</span>
-            <div>
-              <strong>Use AI Magic for recurring clients</strong> — paste an old email or description and the AI fills
-              the whole form in seconds.
-            </div>
+            <div><strong>Use AI Magic for recurring clients</strong> — paste an old email or message and the AI fills the whole form in seconds.</div>
           </div>
           <div class="help-tip">
             <span class="help-tip-num">02</span>
-            <div>
-              <strong>Export weekly</strong> — since data is in localStorage, a regular export habit protects you from
-              accidental data loss.
-            </div>
+            <div><strong>Export weekly</strong> — since data lives in localStorage, a regular export habit protects against accidental data loss from clearing your browser.</div>
           </div>
           <div class="help-tip">
             <span class="help-tip-num">03</span>
-            <div>
-              <strong>Set your business profile first</strong> — your name, email, address and logo appear on every
-              invoice. Do it once in Settings.
-            </div>
+            <div><strong>Set your business profile first</strong> — your name, email, address, and logo appear on every invoice. Do it once in <strong>Settings</strong>.</div>
           </div>
           <div class="help-tip">
             <span class="help-tip-num">04</span>
-            <div>
-              <strong>Tab through fields</strong> — all form inputs support keyboard navigation for fast invoice entry
-              without touching the mouse.
-            </div>
+            <div><strong>Tab through fields</strong> — all form inputs support keyboard navigation for fast invoice entry without touching the mouse.</div>
+          </div>
+          <div class="help-tip">
+            <span class="help-tip-num">05</span>
+            <div><strong>Template colors carry over to mobile</strong> — the bottom navigation bar tints to match your active invoice template's accent color.</div>
           </div>
         </div>
 
@@ -1334,8 +1297,30 @@
           <div class="faq-item">
             <button class="faq-question" onclick="toggleFaq(this)">
               <span style="display:flex;align-items:center;gap:10px;">
-                <span class="version-badge version-latest">v1.3.0</span>
-                <span>Animations & Mobile Polish</span>
+                <span class="version-badge version-latest">v1.4.0</span>
+                <span>Mobile Navigation Overhaul</span>
+              </span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="faq-answer">
+              <div class="changelog-meta">March 2026</div>
+              <ul class="changelog-list">
+                <li class="cl-improved">Mobile header bar and theme toggle are now non-sticky and scroll with the page</li>
+                <li class="cl-improved">Brand pill and theme circle moved into the page flow as a header row</li>
+                <li class="cl-improved">Bottom tab bar made narrower and more compact</li>
+                <li class="cl-improved">Header, theme circle, and tab bar left/right edges aligned with page content</li>
+                <li class="cl-improved">Tab icons and labels reduced in size for a more refined look</li>
+                <li class="cl-fix">Removed gradient fades behind top and bottom mobile elements</li>
+                <li class="cl-fix">Removed conflicting CSS animations that prevented tab bar transforms</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question" onclick="toggleFaq(this)">
+              <span style="display:flex;align-items:center;gap:10px;">
+                <span class="version-badge">v1.3.0</span>
+                <span>Animations &amp; UI Polish</span>
               </span>
               <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
@@ -1344,9 +1329,9 @@
               <ul class="changelog-list">
                 <li class="cl-new">View transitions with spring-curve entrance animations</li>
                 <li class="cl-new">Staggered card entrances for history, templates &amp; help</li>
-                <li class="cl-new">Tab bar &amp; mobile pills bounce-in on load</li>
                 <li class="cl-new">Button press physics across all interactive elements</li>
-                <li class="cl-improved">Sidebar nav items glide on hover</li>
+                <li class="cl-new">Sidebar nav items glide on hover</li>
+                <li class="cl-new">Changelog &amp; versioning section added to Help</li>
                 <li class="cl-improved">Toast repositioned above bottom tab bar on mobile</li>
                 <li class="cl-improved">Email drafter dialog padding restored on mobile</li>
                 <li class="cl-fix">Sidebar menu colors no longer broken by animation layer</li>
@@ -1366,14 +1351,13 @@
               <div class="changelog-meta">March 2026</div>
               <ul class="changelog-list">
                 <li class="cl-new">Floating bottom tab bar for mobile navigation</li>
-                <li class="cl-new">Liquid glass effect on tab bar &amp; header pills</li>
-                <li class="cl-new">Tab bar tints to match the active invoice template</li>
-                <li class="cl-new">Separate floating brand pill and theme toggle on mobile</li>
-                <li class="cl-new">Gradient fades behind top and bottom floating elements</li>
+                <li class="cl-new">Liquid glass effect on tab bar &amp; header elements</li>
+                <li class="cl-new">Tab bar tints to match the active invoice template's color</li>
+                <li class="cl-new">Separate brand pill and theme toggle in mobile header</li>
                 <li class="cl-improved">Sidebar rounded right corners on desktop</li>
-                <li class="cl-improved">Footer now spans full width on desktop</li>
-                <li class="cl-improved">Clicking the logo navigates to New Invoice on all devices</li>
-                <li class="cl-fix">Footer hidden on mobile and moved into Help section</li>
+                <li class="cl-improved">Footer spans full width on desktop</li>
+                <li class="cl-improved">Clicking the EliteInvoice logo navigates to New Invoice on all devices</li>
+                <li class="cl-fix">Footer moved into Help section on mobile</li>
               </ul>
             </div>
           </div>
@@ -1394,7 +1378,7 @@
                 <li class="cl-new">Invoice history with search and filter</li>
                 <li class="cl-new">Revenue dashboard with total earnings</li>
                 <li class="cl-new">Multi-currency support with live exchange rates</li>
-                <li class="cl-improved">Logo upload with base64 local storage</li>
+                <li class="cl-improved">Logo upload stored as base64 locally</li>
                 <li class="cl-improved">Print / PDF export with clean print styles</li>
               </ul>
             </div>
@@ -1472,7 +1456,6 @@
           </svg>
           <span>© 2026 — Built with ❤️ by <a href="https://geanpaulo.com" target="_blank" rel="noopener noreferrer" class="help-contact-link">Gean Paulo</a></span>
         </div>
-
       </section>
 
     </main>
