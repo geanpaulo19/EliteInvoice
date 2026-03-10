@@ -2902,3 +2902,43 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 [data-theme="dark"] .help-about { border-color: #3a3a3c; }
 [data-theme="dark"] .help-about-logo { background: rgba(0,113,227,0.15); }
 [data-theme="dark"] .help-about-tag { background: #3a3a3c; border-color: #48484a; }
+
+/* ══════════════════════════════════════════════════
+   LIGHT / DARK MODE TRANSITION
+══════════════════════════════════════════════════ */
+
+/* Crossfade the whole page via View Transitions API */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.35s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+::view-transition-old(root) { animation-name: theme-fade-out; }
+::view-transition-new(root) { animation-name: theme-fade-in;  }
+
+@keyframes theme-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes theme-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Suppress individual property transitions during the switch
+   so they don't fight the view transition crossfade */
+.theme-transitioning *,
+.theme-transitioning *::before,
+.theme-transitioning *::after {
+  transition: none !important;
+}
+
+/* Fallback: smooth CSS transition for browsers without View Transitions */
+@supports not (view-transition-name: none) {
+  html {
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  .page-wrapper, .sidebar, .main-content, .invoice-document {
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+  }
+}
