@@ -510,14 +510,8 @@ const App = (() => {
       invoices = raw ? JSON.parse(raw) : [];
     } catch (e) { invoices = []; }
 
-    // ── Duplicate invoice number check ──
-    const dupId = invoices.find(inv => inv.id === invoice.id);
-    if (dupId) {
-      showToast(`Invoice number ${invoice.id} already exists. Please use a different number.`);
-      document.getElementById('invoiceNumber').focus();
-      document.getElementById('invoiceNumber').select();
-      return;
-    }
+    // ── Duplicate invoice number check (null = new invoice, no index to exclude) ──
+    if (_checkDuplicateId(invoice.id, invoices, null)) return;
 
     // ── Similarity check ──
     const similar = _findSimilarInvoices(invoice, invoices);
@@ -527,6 +521,20 @@ const App = (() => {
     }
 
     await _doSaveInvoice(invoice, invoices);
+  }
+
+  /* ── Shared duplicate ID check ──
+     Pass excludeIndex = _editingIndex when updating so the invoice's own ID is allowed.
+     Pass excludeIndex = null when creating new.
+     Returns true (and shows toast + focuses field) if a conflict is found. */
+  function _checkDuplicateId(id, invoices, excludeIndex) {
+    const conflict = invoices.findIndex((inv, idx) => inv.id === id && idx !== excludeIndex);
+    if (conflict === -1) return false;
+    showToast(`Invoice number ${id} already exists. Please use a different number.`);
+    const field = document.getElementById('invoiceNumber');
+    field.focus();
+    field.select();
+    return true;
   }
 
   /* ── Similarity scoring ── */
@@ -637,6 +645,9 @@ const App = (() => {
 
       const originalSavedAt = invoices[_editingIndex].savedAt;
       const updated = _buildInvoiceFromForm(originalSavedAt);
+
+      // ── Duplicate invoice number check (exclude the invoice being edited) ──
+      if (_checkDuplicateId(updated.id, invoices, _editingIndex)) return;
 
       invoices[_editingIndex] = updated;
       await kvSet(KV_INVOICES, JSON.stringify(invoices));
