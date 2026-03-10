@@ -2072,9 +2072,61 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   .base-ccy-save-btn { width: 100%; text-align: center; }
 
   .history-list  { max-width: 100%; }
-  .history-card  { flex-wrap: wrap; gap: 12px; }
-  .history-card-amount-group { width: 100%; flex-direction: row; justify-content: space-between; align-items: baseline; }
-  .history-card-actions { width: 100%; display: flex; justify-content: flex-start; flex-wrap: wrap; gap: 8px; }
+
+  /* ── Mobile card: structured 2-col grid layout ── */
+  .history-card {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto auto;
+    grid-template-areas:
+      "info   amount"
+      "badge  badge"
+      "actions actions";
+    gap: 0;
+    padding: 14px 16px;
+    align-items: start;
+  }
+  .history-card-info {
+    grid-area: info;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding-right: 12px;
+  }
+  .history-card-info .hc-number { font-size: 11px; font-weight: 600; }
+  .history-card-info .hc-client { font-size: 14px; font-weight: 600; margin-top: 1px; }
+  .history-card-info .hc-date   { font-size: 11px; margin-top: 2px; }
+
+  .history-card-amount-group {
+    grid-area: amount;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    padding-top: 2px;
+  }
+  .history-card-amount { font-size: 16px; }
+  .hc-converted { font-size: 10.5px; }
+
+  .hc-overdue-badge {
+    grid-area: badge;
+    display: inline-flex;
+    width: fit-content;
+    margin-top: 10px;
+    margin-bottom: 10px;
+  }
+
+  .history-card-actions {
+    grid-area: actions;
+    display: flex;
+    gap: 7px;
+    border-top: 1px solid var(--border-light);
+    padding-top: 10px;
+    margin-top: 0;
+  }
+  .history-card-actions .btn-draft-email { flex: 1; justify-content: center; font-size: 12px; padding: 7px 10px; }
+  .history-card-actions .btn-load        { flex: 1; text-align: center; font-size: 12px; padding: 7px 10px; }
+  .history-card-actions .btn-del-invoice { flex: 1; text-align: center; font-size: 12px; padding: 7px 10px; }
 
   .btn-update      { flex: 1 1 auto; justify-content: center; }
   .btn-cancel-edit { flex: 1 1 auto; justify-content: center; grid-column: 1 / -1; }
