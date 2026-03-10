@@ -2783,3 +2783,67 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 }
 .nav-item:hover  { transform: translateX(2px); }
 .nav-item.active { transform: translateX(0); }
+
+
+/* ══════════════════════════════════════════════════
+   CHANGELOG / VERSIONING
+══════════════════════════════════════════════════ */
+.version-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  background: var(--bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.version-badge.version-latest {
+  background: rgba(0, 113, 227, 0.1);
+  color: var(--accent);
+  border-color: rgba(0, 113, 227, 0.25);
+}
+[data-theme="dark"] .version-badge { background: #3a3a3c; border-color: #48484a; }
+[data-theme="dark"] .version-badge.version-latest { background: rgba(10,132,255,0.18); color: #4da3ff; border-color: rgba(10,132,255,0.3); }
+
+.changelog-meta {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  padding: 10px 0 6px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.changelog-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.changelog-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.changelog-list li::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 1px;
+  position: relative;
+  top: 1px;
+}
+.cl-new::before    { background: #34c759; }
+.cl-improved::before { background: #0071e3; }
+.cl-fix::before    { background: #ff9f0a; }
