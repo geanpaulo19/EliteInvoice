@@ -1306,64 +1306,97 @@ const App = (() => {
       try {
         const parsed = JSON.parse(e.target.result);
         const incoming = parsed.invoices || (Array.isArray(parsed) ? parsed : null);
-        if (!incoming) throw new Error('Unrecognised file format.');
+        if (!incoming || !incoming.length) throw new Error('No invoices found in file.');
 
         const raw = localStorage.getItem(KV_INVOICES);
         const existing = raw ? JSON.parse(raw) : [];
 
-        // Build lookup: id → invoice (for conflict detection)
-        const existingById = {};
-        existing.forEach(inv => { existingById[inv.id] = inv; });
-
-        // Build set of ALL ids currently in system (grows as we assign new ones)
+        // Build set of ALL ids currently in system (grows as we assign new ones below)
         const allIds = new Set(existing.map(i => i.id));
 
-        // Fingerprint an invoice by its content (excluding the id field)
-        const fingerprint = inv => {
-          const { id, ...rest } = inv;
-          return JSON.stringify(rest);
-        };
+        // FIX 1 — Stable fingerprint: sort keys so property order never affects comparison
+        const fingerprint = obj => JSON.stringify(obj, Object.keys(obj).sort());
+
+        // FIX 2 — Store all existing entries per id (handles pre-existing duplicates)
+        const existingByIdAll = {};
+        existing.forEach(inv => {
+          if (!existingByIdAll[inv.id]) existingByIdAll[inv.id] = [];
+          existingByIdAll[inv.id].push(inv);
+        });
 
         // Generate a unique id that doesn't clash with allIds
+        // FIX 3 — allIds is mutated as we assign new ids, preventing collisions between imports
         const makeUniqueId = (baseId) => {
           let suffix = 2;
-          let candidate = `${baseId}-IMP${suffix}`;
+          // Strip any previous -IMP suffix before re-generating
+          const cleanBase = baseId.replace(/-IMP\d+$/, '');
+          let candidate = `${cleanBase}-IMP${suffix}`;
           while (allIds.has(candidate)) {
             suffix++;
-            candidate = `${baseId}-IMP${suffix}`;
+            candidate = `${cleanBase}-IMP${suffix}`;
           }
           return candidate;
         };
 
-        let countAdded = 0, countSkipped = 0, countRenamed = 0;
+        // FIX 5 — Validate each incoming entry before processing
+        const isValid = inv =>
+          inv && typeof inv === 'object' &&
+          typeof inv.id === 'string' && inv.id.trim() &&
+          Array.isArray(inv.items);
+
+        let countAdded = 0, countSkipped = 0, countRenamed = 0, countInvalid = 0;
         const toAdd = [];
 
         incoming.forEach(inv => {
+          if (!isValid(inv)) { countInvalid++; return; }
+
+          const { id, savedAt, updatedAt, ...contentOnly } = inv;
+
           if (!allIds.has(inv.id)) {
             // No conflict — import as-is
             toAdd.push(inv);
             allIds.add(inv.id);
             countAdded++;
-          } else if (fingerprint(inv) === fingerprint(existingById[inv.id])) {
-            // Exact duplicate — skip silently
-            countSkipped++;
           } else {
-            // Same ID, different content — re-ID and import
-            const newId = makeUniqueId(inv.id);
-            toAdd.push({ ...inv, id: newId });
-            allIds.add(newId);
-            countAdded++;
-            countRenamed++;
+            // ID exists — check if any existing entry is an exact content match
+            const existingEntries = existingByIdAll[inv.id] || [];
+            const isExactDup = existingEntries.some(existing => {
+              const { id: _a, savedAt: _b, updatedAt: _c, ...existingContent } = existing;
+              return fingerprint(contentOnly) === fingerprint(existingContent);
+            });
+
+            if (isExactDup) {
+              // Exact duplicate — skip
+              countSkipped++;
+            } else {
+              // Same ID, different content — re-ID and import
+              const newId = makeUniqueId(inv.id);
+              toAdd.push({ ...inv, id: newId });
+              allIds.add(newId);
+              countAdded++;
+              countRenamed++;
+            }
           }
         });
 
         const merged = [...existing, ...toAdd];
         localStorage.setItem(KV_INVOICES, JSON.stringify(merged));
 
+        // FIX 4 — Sync the invoice counter so next new invoice won't clash with imports
+        const allNums = merged
+          .map(inv => { const m = inv.id.match(/#?INV-(\d+)/i); return m ? parseInt(m[1]) : 0; })
+          .filter(n => !isNaN(n));
+        if (allNums.length) {
+          const maxNum = Math.max(...allNums);
+          const currentCounter = parseInt(localStorage.getItem(KV_COUNTER) || '0');
+          if (maxNum > currentCounter) localStorage.setItem(KV_COUNTER, String(maxNum));
+        }
+
         const parts = [];
         if (countAdded)   parts.push(`${countAdded} imported`);
         if (countRenamed) parts.push(`${countRenamed} renamed to avoid conflicts`);
         if (countSkipped) parts.push(`${countSkipped} duplicate${countSkipped > 1 ? 's' : ''} skipped`);
+        if (countInvalid) parts.push(`${countInvalid} invalid entr${countInvalid > 1 ? 'ies' : 'y'} ignored`);
         showToast(parts.join(' · ') || 'Nothing new to import.');
         loadHistory();
       } catch (err) { showToast('Import failed: ' + err.message); }
