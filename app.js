@@ -1604,7 +1604,71 @@ const EliteSplash = {
     const el = document.getElementById('splashScreen');
     if (!el) return;
     el.classList.add('splash-hiding');
-    setTimeout(() => { el.style.display = 'none'; }, 520);
+    setTimeout(() => {
+      el.style.display = 'none';
+      // Show PWA nudge after splash — first visit only, not in standalone
+      PwaNudge.maybeShow();
+    }, 520);
+  }
+};
+
+/* ══════════════════════════════════════════════════
+   PWA INSTALL NUDGE
+   Shown once after the splash screen on first visit,
+   only when not already running as a PWA.
+══════════════════════════════════════════════════ */
+const PwaNudge = {
+  _KEY: 'eliteinvoice_pwa_nudge_seen',
+
+  maybeShow() {
+    // Skip if already in standalone / PWA mode
+    const isStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      window.navigator.standalone === true;
+    if (isStandalone) return;
+
+    // Skip if user already dismissed
+    if (localStorage.getItem(this._KEY)) return;
+
+    // Detect platform and set instructions
+    const el = document.getElementById('pwaNudge');
+    if (!el) return;
+
+    const ua = navigator.userAgent;
+    const isIOS     = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+    const isAndroid = /Android/.test(ua);
+    const instrEl   = document.getElementById('pwaNudgeInstructions');
+    const primaryBtn = document.getElementById('pwaNudgePrimary');
+
+    if (isIOS) {
+      instrEl.innerHTML = 'Tap the <strong>Share</strong> button <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13" style="vertical-align:-2px"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> in Safari, then choose <strong>Add to Home Screen</strong>.';
+      primaryBtn.textContent = 'Got it';
+    } else if (isAndroid) {
+      instrEl.innerHTML = 'Tap the <strong>⋮</strong> menu in Chrome, then choose <strong>Add to Home Screen</strong> or <strong>Install app</strong>.';
+      primaryBtn.textContent = 'Got it';
+    } else {
+      // Desktop — show install prompt if available, else generic tip
+      instrEl.innerHTML = 'Click the <strong>install icon</strong> in your browser\'s address bar to add EliteInvoice as a desktop app.';
+      primaryBtn.textContent = 'Got it';
+    }
+
+    // Show with a small delay so the splash exit animation fully settles
+    setTimeout(() => {
+      el.style.display = 'flex';
+    }, 300);
+  },
+
+  dismiss() {
+    const el = document.getElementById('pwaNudge');
+    if (!el) return;
+    el.style.animation = 'nudgeBgIn 0.2s ease reverse both';
+    el.querySelector('.pwa-nudge-card').style.animation = 'nudgeCardIn 0.25s cubic-bezier(0.22,1,0.36,1) reverse both';
+    setTimeout(() => { el.style.display = 'none'; }, 250);
+  },
+
+  never() {
+    localStorage.setItem(this._KEY, '1');
+    this.dismiss();
   }
 };
 
