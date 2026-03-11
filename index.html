@@ -128,6 +128,29 @@
     </div>
   </div>
 
+  <!-- PWA Install Nudge — shown once after splash, only in browser (not standalone) -->
+  <div id="pwaNudge" class="pwa-nudge" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pwaNudgeTitle">
+    <div class="pwa-nudge-card">
+      <button class="pwa-nudge-close" onclick="PwaNudge.dismiss()" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <div class="pwa-nudge-icon">
+        <svg viewBox="0 0 28 28" fill="none" width="32" height="32">
+          <rect width="28" height="28" rx="7" fill="#0071e3"/>
+          <path d="M7 20L11 8H14L17 16L19 11H22L18 20H15L12 12L10 20H7Z" fill="white"/>
+        </svg>
+      </div>
+      <div class="pwa-nudge-body">
+        <div class="pwa-nudge-title" id="pwaNudgeTitle">Add to Home Screen</div>
+        <p class="pwa-nudge-text" id="pwaNudgeInstructions">Install EliteInvoice for quick access, offline support, and a native app feel.</p>
+      </div>
+      <div class="pwa-nudge-actions">
+        <button class="pwa-nudge-btn-primary" onclick="PwaNudge.dismiss()" id="pwaNudgePrimary">Got it</button>
+        <button class="pwa-nudge-btn-secondary" onclick="PwaNudge.never()">Don't show again</button>
+      </div>
+    </div>
+  </div>
+
 
   <div class="sidebar-overlay" id="sidebarOverlay" onclick="App.closeSidebar()"></div>
 
