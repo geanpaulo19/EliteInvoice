@@ -2732,25 +2732,23 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
    Both are equivalent — JS attr allows more
    specificity in component-level overrides.
 ══════════════════════════════════════════════════ */
-@media (display-mode: standalone) {
-  /* Sit above the iOS home indicator — safe-area-inset-bottom + breathing room */
+@media (display-mode: standalone) and (max-width: 767px) {
   .mobile-tab-bar {
     bottom: calc(env(safe-area-inset-bottom) + 10px);
   }
-  /* Give main content extra bottom padding to match */
   .main-content {
     padding-bottom: calc(90px + env(safe-area-inset-bottom));
   }
-  /* Hide browser-only UI hints */
   .pwa-hidden { display: none !important; }
 }
 
-/* JS-set attribute version — same rules, higher specificity wins ties */
-body[data-pwa="true"] .mobile-tab-bar {
-  bottom: calc(env(safe-area-inset-bottom) + 10px);
-}
-body[data-pwa="true"] .main-content {
-  padding-bottom: calc(90px + env(safe-area-inset-bottom));
+@media (max-width: 767px) {
+  body[data-pwa="true"] .mobile-tab-bar {
+    bottom: calc(env(safe-area-inset-bottom) + 10px);
+  }
+  body[data-pwa="true"] .main-content {
+    padding-bottom: calc(90px + env(safe-area-inset-bottom));
+  }
 }
 body[data-pwa="true"] .pwa-hidden { display: none !important; }
 body[data-pwa="true"] .pwa-only   { display: revert !important; }
