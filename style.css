@@ -2733,9 +2733,9 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
    specificity in component-level overrides.
 ══════════════════════════════════════════════════ */
 @media (display-mode: standalone) {
-  /* Shift tab bar up to clear the iOS home indicator swipe area */
+  /* Sit above the iOS home indicator — safe-area-inset-bottom + breathing room */
   .mobile-tab-bar {
-    bottom: max(12px, env(safe-area-inset-bottom));
+    bottom: calc(env(safe-area-inset-bottom) + 10px);
   }
   /* Give main content extra bottom padding to match */
   .main-content {
@@ -2747,7 +2747,7 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 
 /* JS-set attribute version — same rules, higher specificity wins ties */
 body[data-pwa="true"] .mobile-tab-bar {
-  bottom: max(12px, env(safe-area-inset-bottom));
+  bottom: calc(env(safe-area-inset-bottom) + 10px);
 }
 body[data-pwa="true"] .main-content {
   padding-bottom: calc(90px + env(safe-area-inset-bottom));
