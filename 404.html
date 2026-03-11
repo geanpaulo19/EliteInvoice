@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>404 — Page Not Found · EliteInvoice</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyOCAyOCIgZmlsbD0ibm9uZSI+PHJlY3Qgd2lkdGg9IjI4IiBoZWlnaHQ9IjI4IiByeD0iNyIgZmlsbD0iIzAwNzFlMyIvPjxwYXRoIGQ9Ik03IDIwTDExIDhIMTRMMTcgMTZMMTkgMTFIMjJMMTggMjBIMTVMMTIgMTJMMTAgMjBIN1oiIGZpbGw9IndoaXRlIi8+PC9zdmc+" />
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Instrument+Serif:ital@0;1&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #f5f5f7;
+      --surface: #ffffff;
+      --accent:  #0071e3;
+      --danger:  #cf222e;
+      --text:    #1d1d1f;
+      --muted:   #6e6e73;
+      --border:  #d2d2d7;
+      --mono:    'DM Mono', 'Courier New', monospace;
+      --serif:   'Instrument Serif', Georgia, serif;
+    }
+
+    html, body {
+      min-height: 100vh;
+      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    /* ── Ambient glow behind card ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 40% at 30% 60%, rgba(0,113,227,0.07) 0%, transparent 70%),
+        radial-gradient(ellipse 50% 35% at 75% 30%, rgba(207,34,46,0.05) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    /* ── The invoice card ── */
+    .invoice-card {
+      position: relative;
+      background: var(--surface);
+      width: 100%;
+      max-width: 520px;
+      border-radius: 4px;
+      box-shadow:
+        0 1px 3px rgba(0,0,0,0.07),
+        0 8px 32px rgba(0,0,0,0.10),
+        0 32px 64px rgba(0,0,0,0.06);
+      overflow: hidden;
+      animation: cardIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(28px) rotate(-0.5deg); }
+      to   { opacity: 1; transform: translateY(0) rotate(0deg); }
+    }
+
+    /* ── Torn top edge ── */
+    .torn-edge {
+      position: relative;
+      height: 28px;
+      background: var(--surface);
+      overflow: hidden;
+    }
+    .torn-edge::before {
+      content: '';
+      position: absolute;
+      bottom: 0; left: -10px; right: -10px;
+      height: 32px;
+      background: var(--bg);
+      /* SVG jagged tear path */
+      clip-path: polygon(
+        0% 100%, 0% 60%,
+        2% 30%,  4% 55%,  6% 25%,  8% 50%,
+        10% 20%, 12% 48%, 14% 22%, 16% 45%,
+        18% 15%, 20% 42%, 22% 18%, 24% 44%,
+        26% 12%, 28% 40%, 30% 16%, 32% 43%,
+        34% 10%, 36% 38%, 38% 14%, 40% 42%,
+        42% 8%,  44% 35%, 46% 12%, 48% 40%,
+        50% 6%,  52% 33%, 54% 10%, 56% 38%,
+        58% 14%, 60% 42%, 62% 8%,  64% 36%,
+        66% 12%, 68% 40%, 70% 6%,  72% 34%,
+        74% 10%, 76% 38%, 78% 14%, 80% 40%,
+        82% 8%,  84% 35%, 86% 12%, 88% 42%,
+        90% 16%, 92% 44%, 94% 18%, 96% 46%,
+        98% 20%, 100% 48%, 100% 100%
+      );
+    }
+
+    /* ── Invoice header band ── */
+    .inv-header {
+      background: var(--accent);
+      padding: 18px 32px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      animation: fadeUp 0.5s 0.15s both;
+    }
+    .inv-logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+    }
+    .inv-number {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: rgba(255,255,255,0.65);
+      letter-spacing: 0.5px;
+    }
+
+    /* ── Invoice body ── */
+    .inv-body {
+      padding: 32px 32px 28px;
+    }
+
+    /* ── VOID stamp ── */
+    .void-stamp {
+      position: absolute;
+      top: 108px;
+      right: 28px;
+      font-family: var(--mono);
+      font-size: 44px;
+      font-weight: 500;
+      color: rgba(207,34,46,0.14);
+      letter-spacing: 6px;
+      border: 4px solid rgba(207,34,46,0.12);
+      border-radius: 6px;
+      padding: 4px 14px;
+      transform: rotate(−12deg);
+      transform: rotate(-12deg);
+      pointer-events: none;
+      user-select: none;
+      animation: stampIn 0.4s 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      line-height: 1;
+    }
+    @keyframes stampIn {
+      from { opacity: 0; transform: rotate(-12deg) scale(1.4); }
+      to   { opacity: 1; transform: rotate(-12deg) scale(1); }
+    }
+
+    /* ── Meta row ── */
+    .inv-meta {
+      display: flex;
+      gap: 32px;
+      margin-bottom: 28px;
+      animation: fadeUp 0.5s 0.2s both;
+    }
+    .inv-meta-item {}
+    .inv-meta-label {
+      font-family: var(--mono);
+      font-size: 9.5px;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 3px;
+    }
+    .inv-meta-value {
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--text);
+    }
+    .inv-meta-value.mono { font-family: var(--mono); font-size: 12px; }
+
+    /* ── Big 404 ── */
+    .error-amount {
+      font-family: var(--serif);
+      font-size: clamp(72px, 16vw, 108px);
+      font-style: italic;
+      line-height: 1;
+      letter-spacing: -3px;
+      color: var(--text);
+      margin-bottom: 6px;
+      animation: fadeUp 0.5s 0.25s both;
+    }
+    .error-desc {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      color: var(--muted);
+      letter-spacing: 0.3px;
+      margin-bottom: 28px;
+      animation: fadeUp 0.5s 0.3s both;
+    }
+
+    /* ── Line items ── */
+    .line-items {
+      border-top: 1px solid var(--border);
+      margin-bottom: 20px;
+      animation: fadeUp 0.5s 0.35s both;
+    }
+    .line-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 9px 0;
+      border-bottom: 1px solid #f0f0f2;
+      font-size: 12.5px;
+    }
+    .line-item-desc { color: var(--text); }
+    .line-item-desc s {
+      color: var(--muted);
+      text-decoration-color: rgba(207,34,46,0.5);
+    }
+    .line-item-amount {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .line-item-amount.strike {
+      text-decoration: line-through;
+      text-decoration-color: rgba(207,34,46,0.5);
+    }
+
+    /* ── Total row ── */
+    .total-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 14px 0 0;
+      animation: fadeUp 0.5s 0.4s both;
+    }
+    .total-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--muted);
+    }
+    .total-value {
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--danger);
+    }
+
+    /* ── CTA ── */
+    .cta-row {
+      display: flex;
+      gap: 10px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      margin-top: 20px;
+      animation: fadeUp 0.5s 0.45s both;
+    }
+    .btn-home {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--accent);
+      color: #fff;
+      text-decoration: none;
+      padding: 9px 20px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: -0.1px;
+      transition: opacity 0.15s, transform 0.12s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.2s;
+      box-shadow: 0 2px 10px rgba(0,113,227,0.3);
+    }
+    .btn-home:hover  { opacity: 0.9; box-shadow: 0 4px 18px rgba(0,113,227,0.4); }
+    .btn-home:active { transform: scale(0.96); }
+    .btn-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: transparent;
+      color: var(--muted);
+      text-decoration: none;
+      padding: 9px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      transition: background 0.15s, color 0.15s, transform 0.12s;
+    }
+    .btn-back:hover  { background: var(--bg); color: var(--text); }
+    .btn-back:active { transform: scale(0.96); }
+
+    /* ── Notes footer ── */
+    .inv-notes {
+      padding: 12px 32px 20px;
+      border-top: 1px solid var(--border);
+      animation: fadeUp 0.5s 0.5s both;
+    }
+    .inv-notes-label {
+      font-family: var(--mono);
+      font-size: 9.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+    .inv-notes-text {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    .inv-notes-text a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .inv-notes-text a:hover { text-decoration: underline; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Punch holes ── */
+    .punch-holes {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 28px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-evenly;
+      align-items: center;
+      pointer-events: none;
+    }
+    .punch-hole {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+    }
+
+    /* ── Dark mode ── */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:      #1c1c1e;
+        --surface: #2c2c2e;
+        --text:    #f5f5f7;
+        --muted:   #8e8e93;
+        --border:  #3a3a3c;
+      }
+      .torn-edge::before { background: var(--bg); }
+      .void-stamp {
+        color: rgba(248,113,113,0.15);
+        border-color: rgba(248,113,113,0.12);
+      }
+      .line-item { border-bottom-color: #3a3a3c; }
+      .total-value { color: #f87171; }
+    }
+
+    /* ── Mobile ── */
+    @media (max-width: 480px) {
+      html, body {
+        align-items: flex-start;
+        padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+        padding-top: max(32px, env(safe-area-inset-top));
+      }
+
+      .invoice-card {
+        border-radius: 4px;
+        /* No rotation on mobile — feels off on small screens */
+        animation: cardInMobile 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+
+      @keyframes cardInMobile {
+        from { opacity: 0; transform: translateY(20px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
+      .punch-holes { display: none; }
+
+      .inv-header { padding: 14px 18px; }
+      .inv-logo   { font-size: 13px; }
+      .inv-number { font-size: 10px; }
+
+      .void-stamp {
+        font-size: 28px;
+        letter-spacing: 4px;
+        top: auto;
+        bottom: 180px;
+        right: 14px;
+        border-width: 3px;
+      }
+
+      .inv-body { padding: 20px 18px 18px; }
+
+      /* Stack meta items in a 2-col grid instead of overflowing row */
+      .inv-meta {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px 16px;
+        margin-bottom: 22px;
+      }
+      /* Status spans full width */
+      .inv-meta-item:last-child {
+        grid-column: 1 / -1;
+      }
+
+      .error-amount {
+        font-size: clamp(64px, 22vw, 88px);
+        letter-spacing: -2px;
+        margin-bottom: 4px;
+      }
+      .error-desc {
+        font-size: 10.5px;
+        margin-bottom: 22px;
+        word-break: break-all;
+      }
+
+      .line-item      { font-size: 12px; padding: 8px 0; }
+      .line-item-amount { font-size: 11px; }
+
+      .total-row { padding-top: 12px; }
+      .total-label { font-size: 9px; }
+      .total-value {
+        font-size: 11px;
+        text-align: right;
+        max-width: 180px;
+      }
+
+      /* Stack CTA buttons full width */
+      .cta-row {
+        flex-direction: column;
+        gap: 8px;
+        padding-top: 20px;
+        margin-top: 16px;
+      }
+      .btn-home,
+      .btn-back {
+        width: 100%;
+        justify-content: center;
+        padding: 11px 20px;
+        font-size: 13.5px;
+      }
+
+      .inv-notes { padding: 12px 18px 18px; }
+      .inv-notes-text { font-size: 11.5px; }
+    }
+
+    /* ── Very small screens (SE, Galaxy A series) ── */
+    @media (max-width: 360px) {
+      .inv-meta { grid-template-columns: 1fr; }
+      .inv-meta-item:last-child { grid-column: auto; }
+      .error-amount { font-size: 64px; }
+      .line-item-desc s, .line-item-desc { font-size: 11px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="invoice-card">
+
+    <!-- Punch holes on left edge -->
+    <div class="punch-holes">
+      <div class="punch-hole"></div>
+      <div class="punch-hole"></div>
+      <div class="punch-hole"></div>
+    </div>
+
+    <!-- Torn top -->
+    <div class="torn-edge"></div>
+
+    <!-- Header band -->
+    <div class="inv-header">
+      <div class="inv-logo">
+        <svg width="22" height="22" viewBox="0 0 28 28" fill="none">
+          <rect width="28" height="28" rx="7" fill="rgba(255,255,255,0.25)"/>
+          <path d="M7 20L11 8H14L17 16L19 11H22L18 20H15L12 12L10 20H7Z" fill="white"/>
+        </svg>
+        EliteInvoice
+      </div>
+      <div class="inv-number">INV-0404</div>
+    </div>
+
+    <!-- VOID stamp -->
+    <div class="void-stamp">VOID</div>
+
+    <!-- Body -->
+    <div class="inv-body">
+
+      <div class="inv-meta">
+        <div class="inv-meta-item">
+          <div class="inv-meta-label">Issued to</div>
+          <div class="inv-meta-value">Lost Traveller</div>
+        </div>
+        <div class="inv-meta-item">
+          <div class="inv-meta-label">Date</div>
+          <div class="inv-meta-value mono" id="today"></div>
+        </div>
+        <div class="inv-meta-item">
+          <div class="inv-meta-label">Status</div>
+          <div class="inv-meta-value" style="color:#cf222e;font-weight:600;">Not Found</div>
+        </div>
+      </div>
+
+      <div class="error-amount">404</div>
+      <div class="error-desc">// ERROR: Requested page does not exist</div>
+
+      <div class="line-items">
+        <div class="line-item">
+          <span class="line-item-desc"><s>The page you were looking for</s></span>
+          <span class="line-item-amount strike">—</span>
+        </div>
+        <div class="line-item">
+          <span class="line-item-desc"><s>Your expected destination</s></span>
+          <span class="line-item-amount strike">—</span>
+        </div>
+        <div class="line-item">
+          <span class="line-item-desc">A fresh start at the homepage</span>
+          <span class="line-item-amount" style="color:#1a7f37;font-weight:600;">✓ Free</span>
+        </div>
+      </div>
+
+      <div class="total-row">
+        <span class="total-label">Amount due</span>
+        <span class="total-value">$0.00 &nbsp;(no charge for getting lost)</span>
+      </div>
+
+      <div class="cta-row">
+        <a href="/" class="btn-home">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+          Back to EliteInvoice
+        </a>
+        <a href="javascript:history.back()" class="btn-back">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+          Go back
+        </a>
+      </div>
+
+    </div>
+
+    <!-- Notes footer -->
+    <div class="inv-notes">
+      <div class="inv-notes-label">Notes</div>
+      <div class="inv-notes-text">
+        This invoice has been voided. The URL you followed may be broken or the page may have been removed.
+        If you think this is a mistake, <a href="mailto:me@geanpaulo.com">contact support</a>.
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Fill today's date
+    document.getElementById('today').textContent =
+      new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  </script>
+
+</body>
+</html>
