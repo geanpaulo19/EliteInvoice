@@ -296,6 +296,20 @@ const App = (() => {
     updateTotals();
   }
 
+  /* ══════════ DISCOUNT TYPE ══════════ */
+  // 'pct' = percentage off subtotal, 'fixed' = flat amount off
+  let _discountType = 'pct';
+
+  function toggleDiscountType() {
+    _discountType = _discountType === 'pct' ? 'fixed' : 'pct';
+    const btn = document.getElementById('discountTypeBtn');
+    const input = document.getElementById('discountAmount');
+    btn.textContent = _discountType === 'pct' ? '%' : currentCurrency;
+    input.placeholder = '0';
+    input.max = _discountType === 'pct' ? '100' : '';
+    updateTotals();
+  }
+
   /* ══════════ TOTALS ══════════ */
   function updateTotals() {
     const rows = document.querySelectorAll('#invoiceBody tr');
@@ -303,18 +317,48 @@ const App = (() => {
     let subtotal = 0;
     rows.forEach(row => {
       const inputs = row.querySelectorAll('input');
-      const qty = parseFloat(inputs[1].value) || 0;
+      const qty   = parseFloat(inputs[1].value) || 0;
       const price = parseFloat(inputs[2].value) || 0;
-      const line = qty * price;
+      const line  = qty * price;
       subtotal += line;
       row.querySelector('.td-total').textContent = line ? sym + fmt(line) : '—';
     });
+
+    // Discount
+    const discountRaw = parseFloat(document.getElementById('discountAmount').value) || 0;
+    let discountAmt = 0;
+    let discountLabel = '';
+    if (discountRaw > 0) {
+      if (_discountType === 'pct') {
+        discountAmt  = subtotal * (Math.min(discountRaw, 100) / 100);
+        discountLabel = `${discountRaw}% off`;
+      } else {
+        discountAmt  = Math.min(discountRaw, subtotal);
+        discountLabel = `${sym}${fmt(discountRaw)} off`;
+      }
+    }
+
+    // Show/hide discount row
+    const discountRow = document.getElementById('discountRow');
+    discountRow.classList.toggle('discount-row--active', discountRaw > 0);
+    document.getElementById('discountVal').textContent =
+      discountAmt > 0 ? `− ${sym}${fmt(discountAmt)}` : '—';
+    // Print label shows the discount description inline
+    document.getElementById('discountPrintLabel').textContent =
+      discountLabel ? ` (${discountLabel})` : '';
+    // Sync currency symbol on fixed-type button
+    if (_discountType === 'fixed') {
+      document.getElementById('discountTypeBtn').textContent = sym;
+    }
+
+    const afterDiscount = subtotal - discountAmt;
     const taxPct = parseFloat(document.getElementById('taxRateInput').value) || 0;
-    const tax = subtotal * (taxPct / 100);
-    const total = subtotal + tax;
+    const tax    = afterDiscount * (taxPct / 100);
+    const total  = afterDiscount + tax;
+
     document.getElementById('subtotalVal').textContent = sym + fmt(subtotal);
-    document.getElementById('taxVal').textContent = sym + fmt(tax);
-    document.getElementById('totalVal').textContent = sym + fmt(total);
+    document.getElementById('taxVal').textContent      = sym + fmt(tax);
+    document.getElementById('totalVal').textContent    = sym + fmt(total);
   }
 
   /* ══════════ CURRENCY ══════════ */
@@ -334,6 +378,10 @@ const App = (() => {
     document.getElementById('magicInput').value = '';
     document.getElementById('magicStatus').textContent = '';
     document.getElementById('taxRateInput').value = DEFAULT_TAX_RATE;
+    document.getElementById('discountAmount').value = '';
+    _discountType = 'pct';
+    document.getElementById('discountTypeBtn').textContent = '%';
+    document.getElementById('discountRow').classList.remove('discount-row--active');
     const today = new Date();
     document.getElementById('invoiceDate').value = fmtDate(today);
     const due = new Date(today); due.setDate(due.getDate() + 30);
@@ -373,6 +421,8 @@ const App = (() => {
       '  "date": "",\n' +
       '  "due": "",\n' +
       '  "taxPct": null,\n' +
+      '  "discountRaw": null,\n' +
+      '  "discountType": "pct",\n' +
       '  "notes": "",\n' +
       '  "items": [{"desc": "", "qty": 1, "price": 0}]\n' +
       '}\n' +
@@ -380,6 +430,8 @@ const App = (() => {
       '- currency: symbol only e.g. $, €, £, ₱. Default to "$" if not mentioned.\n' +
       '- date and due: YYYY-MM-DD format. Resolve relative dates like "today", "in 30 days", "end of month" using today\'s date. Leave "" if not mentioned.\n' +
       '- taxPct: number only e.g. 10 for 10%. null if not mentioned.\n' +
+      '- discountRaw: the discount value. null if not mentioned.\n' +
+      '- discountType: "pct" if discount is a percentage (e.g. "10% off"), "fixed" if it\'s a flat amount (e.g. "$50 off").\n' +
       '- clientName, clientEmail, clientAddress, notes: plain strings, "" if not found.\n' +
       '- items: array of {desc, qty, price}. qty and price must be numbers.';
 
@@ -427,9 +479,18 @@ const App = (() => {
       // Tax
       if (parsed.taxPct !== null && parsed.taxPct !== undefined && parsed.taxPct !== '') {
         document.getElementById('taxRateInput').value = parsed.taxPct;
-        updateTotals();
         filledFields++;
       }
+
+      // Discount
+      if (parsed.discountRaw !== null && parsed.discountRaw !== undefined && parsed.discountRaw !== '') {
+        _discountType = parsed.discountType === 'fixed' ? 'fixed' : 'pct';
+        document.getElementById('discountAmount').value = parsed.discountRaw;
+        document.getElementById('discountTypeBtn').textContent = _discountType === 'pct' ? '%' : currentCurrency;
+        filledFields++;
+      }
+
+      updateTotals();
 
       // Notes
       if (parsed.notes) { document.getElementById('invoiceNotes').value = parsed.notes; filledFields++; }
@@ -470,26 +531,37 @@ const App = (() => {
     rows.forEach(row => {
       const inputs = row.querySelectorAll('input');
       items.push({
-        desc: inputs[0].value,
-        qty: parseFloat(inputs[1].value) || 0,
+        desc:  inputs[0].value,
+        qty:   parseFloat(inputs[1].value) || 0,
         price: parseFloat(inputs[2].value) || 0
       });
     });
-    const taxPct = parseFloat(document.getElementById('taxRateInput').value) || 0;
-    const subtotal = items.reduce((s, i) => s + i.qty * i.price, 0);
-    const tax = subtotal * (taxPct / 100);
-    const total = subtotal + tax;
+    const taxPct      = parseFloat(document.getElementById('taxRateInput').value) || 0;
+    const discountRaw = parseFloat(document.getElementById('discountAmount').value) || 0;
+    const subtotal    = items.reduce((s, i) => s + i.qty * i.price, 0);
+    const discountAmt = discountRaw > 0
+      ? (_discountType === 'pct'
+          ? subtotal * (Math.min(discountRaw, 100) / 100)
+          : Math.min(discountRaw, subtotal))
+      : 0;
+    const afterDiscount = subtotal - discountAmt;
+    const tax   = afterDiscount * (taxPct / 100);
+    const total = afterDiscount + tax;
     return {
-      id: document.getElementById('invoiceNumber').value.trim(),
-      date: document.getElementById('invoiceDate').value,
-      due: document.getElementById('invoiceDue').value,
-      clientName: document.getElementById('clientName').value,
+      id:          document.getElementById('invoiceNumber').value.trim(),
+      date:        document.getElementById('invoiceDate').value,
+      due:         document.getElementById('invoiceDue').value,
+      clientName:  document.getElementById('clientName').value,
       clientEmail: document.getElementById('clientEmail').value,
-      clientAddr: document.getElementById('clientAddress').value,
-      notes: document.getElementById('invoiceNotes').value,
-      currency: currentCurrency,
-      taxPct, items, subtotal, tax, total,
-      savedAt: existingSavedAt || new Date().toISOString(),
+      clientAddr:  document.getElementById('clientAddress').value,
+      notes:       document.getElementById('invoiceNotes').value,
+      currency:    currentCurrency,
+      taxPct,
+      discountRaw,
+      discountType: _discountType,
+      discountAmt,
+      items, subtotal, tax, total,
+      savedAt:   existingSavedAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
   }
@@ -1081,6 +1153,11 @@ const App = (() => {
       document.getElementById('clientAddress').value  = inv.clientAddr  || '';
       document.getElementById('invoiceNotes').value   = inv.notes       || '';
       document.getElementById('taxRateInput').value   = inv.taxPct      ?? DEFAULT_TAX_RATE;
+      // Restore discount
+      _discountType = inv.discountType || 'pct';
+      document.getElementById('discountAmount').value = inv.discountRaw || '';
+      document.getElementById('discountTypeBtn').textContent =
+        _discountType === 'pct' ? '%' : (inv.currency || '$');
       document.getElementById('invoiceBody').innerHTML = '';
       (inv.items || []).forEach(item => addRow(item.desc || '', item.qty ?? 1, item.price ?? ''));
 
@@ -1500,7 +1577,7 @@ const App = (() => {
     init, navigate,
     toggleSidebar, closeSidebar,
     addRow, deleteRow, updateTotals,
-    setCurrency, newInvoice, cancelEdit, runMagicParse,
+    setCurrency, newInvoice, cancelEdit, runMagicParse, toggleDiscountType,
     saveInvoice, updateInvoice, clearInvoice, loadHistory,
     loadInvoiceToEditor, deleteInvoice, showConfirm,
     saveSettings, uploadLogo,
