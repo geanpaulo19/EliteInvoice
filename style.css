@@ -1088,6 +1088,7 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 [data-theme="dark"] .help-tip-num{background:rgba(0,113,227,0.15);color:#4da3ff}
 [data-theme="dark"] .help-quick-icon[style*="background:#e8f4ff"]{background:rgba(0,113,227,0.15)!important;color:#4da3ff!important}
 [data-theme="dark"] .help-quick-icon[style*="background:#edfaf1"]{background:rgba(26,127,55,0.15)!important;color:#4ade80!important}
+[data-theme="dark"] .help-quick-icon[style*="background:#fff0f0"]{background:rgba(207,34,46,0.15)!important;color:#f87171!important}
 [data-theme="dark"] .help-quick-icon[style*="background:#fff3e0"]{background:rgba(230,81,0,0.15)!important;color:#fb923c!important}
 [data-theme="dark"] .help-quick-icon[style*="background:#f3e8ff"]{background:rgba(124,58,237,0.15)!important;color:#c084fc!important}
 @media (max-width:600px){.help-quick-cards{grid-template-columns:1fr}}
