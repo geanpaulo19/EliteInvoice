@@ -1618,6 +1618,24 @@ document.addEventListener('DOMContentLoaded', () => {
     // Wait for init to complete before navigating
     setTimeout(() => App.navigate(view), 100);
   }
+
+  // ── PWA mode detection ──
+  // Covers: Android Chrome, iOS Safari standalone, desktop PWA
+  const isPWA =
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true ||
+    document.referrer.startsWith('android-app://');
+
+  if (isPWA) {
+    document.body.setAttribute('data-pwa', 'true');
+    console.log('[PWA] Running in standalone mode');
+  }
+
+  // Also react if user installs mid-session (rare but possible)
+  window.matchMedia('(display-mode: standalone)').addEventListener('change', (e) => {
+    if (e.matches) document.body.setAttribute('data-pwa', 'true');
+    else document.body.removeAttribute('data-pwa');
+  });
 });
 
 /* ══════════════════════════════════════════════════
