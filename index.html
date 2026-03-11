@@ -32,6 +32,15 @@
   <link rel="shortcut icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyOCAyOCIgZmlsbD0ibm9uZSI+PHJlY3Qgd2lkdGg9IjI4IiBoZWlnaHQ9IjI4IiByeD0iNyIgZmlsbD0iIzAwNzFlMyIvPjxwYXRoIGQ9Ik03IDIwTDExIDhIMTRMMTcgMTZMMTkgMTFIMjJMMTggMjBIMTVMMTIgMTJMMTAgMjBIN1oiIGZpbGw9IndoaXRlIi8+PC9zdmc+" />
   <meta name="theme-color" content="#0071e3" />
 
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="EliteInvoice" />
+  <!-- Apple touch icon (SVG inline as data URI) -->
+  <link rel="apple-touch-icon" href="/icon-192.png" />
+
   <link rel="stylesheet" href="style.css" />
   <!-- No third-party AI SDK required — calls go via your Cloudflare Worker -->
 </head>
@@ -1717,5 +1726,33 @@
   </nav>
 
   <script src="app.js"></script>
+
+  <!-- ── Service Worker registration ── -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then(reg => {
+            console.log('[PWA] Service worker registered:', reg.scope);
+
+            // Notify user when a new version is available
+            reg.addEventListener('updatefound', () => {
+              const newWorker = reg.installing;
+              newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  // New version cached — show update toast after a short delay
+                  setTimeout(() => {
+                    if (typeof App !== 'undefined' && App.showToast) {
+                      App.showToast('✦ Update available — refresh to get the latest version.');
+                    }
+                  }, 1500);
+                }
+              });
+            });
+          })
+          .catch(err => console.warn('[PWA] Service worker registration failed:', err));
+      });
+    }
+  </script>
 </body>
 </html>
