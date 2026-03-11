@@ -198,6 +198,13 @@
     <div class="sidebar-footer">
       <div class="status-dot" id="statusDot"></div>
       <span id="statusText">Initialising…</span>
+      <button class="sidebar-shortcuts-btn no-print" onclick="App.openShortcuts()" title="Keyboard shortcuts">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="13" height="13">
+          <rect x="2" y="4" width="20" height="16" rx="2"/>
+          <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/>
+        </svg>
+        <span>Shortcuts</span>
+      </button>
     </div>
   </aside>
 
@@ -298,9 +305,12 @@
               Update Invoice
             </button>
 
-            <!-- Cancel Edit — shown only in edit mode -->
+            <!-- Done — shown only in edit mode -->
             <button class="btn-cancel-edit" id="btnCancelEdit" onclick="App.cancelEdit()" style="display:none">
-              Cancel Edit
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              Done
             </button>
 
             <button class="btn-ghost" onclick="window.print()">
@@ -1290,6 +1300,31 @@
           </div>
         </div>
 
+        <!-- Keyboard Shortcuts (shown in Help on mobile, dialog on desktop) -->
+        <div class="help-section-title" style="margin-top:32px;">Keyboard Shortcuts</div>
+        <div class="help-shortcuts-grid">
+          <div class="help-shortcuts-group">
+            <div class="help-shortcuts-group-label">Navigation</div>
+            <div class="help-shortcut-row"><span>New Invoice</span><span class="help-shortcut-keys"><kbd>G</kbd> <kbd>N</kbd></span></div>
+            <div class="help-shortcut-row"><span>Saved Invoices</span><span class="help-shortcut-keys"><kbd>G</kbd> <kbd>H</kbd></span></div>
+            <div class="help-shortcut-row"><span>Templates</span><span class="help-shortcut-keys"><kbd>G</kbd> <kbd>T</kbd></span></div>
+            <div class="help-shortcut-row"><span>Settings</span><span class="help-shortcut-keys"><kbd>G</kbd> <kbd>S</kbd></span></div>
+            <div class="help-shortcut-row"><span>Help</span><span class="help-shortcut-keys"><kbd>G</kbd> <kbd>?</kbd></span></div>
+          </div>
+          <div class="help-shortcuts-group">
+            <div class="help-shortcuts-group-label">Invoice</div>
+            <div class="help-shortcut-row"><span>Save invoice</span><span class="help-shortcut-keys"><kbd>⌘S</kbd></span></div>
+            <div class="help-shortcut-row"><span>Add line item</span><span class="help-shortcut-keys"><kbd>⌘↵</kbd></span></div>
+            <div class="help-shortcut-row"><span>Clear form</span><span class="help-shortcut-keys"><kbd>⌘⌫</kbd></span></div>
+          </div>
+          <div class="help-shortcuts-group">
+            <div class="help-shortcuts-group-label">General</div>
+            <div class="help-shortcut-row"><span>Toggle dark mode</span><span class="help-shortcut-keys"><kbd>⌘⇧D</kbd></span></div>
+            <div class="help-shortcut-row"><span>Show shortcuts</span><span class="help-shortcut-keys"><kbd>?</kbd></span></div>
+            <div class="help-shortcut-row"><span>Close dialog</span><span class="help-shortcut-keys"><kbd>Esc</kbd></span></div>
+          </div>
+        </div>
+
         <!-- Changelog -->
         <div class="help-section-title" style="margin-top:32px;">Changelog</div>
         <div class="help-faq">
@@ -1465,6 +1500,49 @@
     © 2026 — Built with ❤️ by
     <a href="https://geanpaulo.com" target="_blank" rel="noopener noreferrer">Gean Paulo</a>
   </footer>
+
+  <!-- ═══════════════════════ KEYBOARD SHORTCUTS DIALOG ═══════════════════════ -->
+  <div class="modal-overlay" id="shortcutsDialog" onclick="App.closeShortcuts(event)">
+    <div class="shortcuts-card">
+      <div class="shortcuts-header">
+        <div class="shortcuts-title-group">
+          <div class="shortcuts-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16">
+              <rect x="2" y="4" width="20" height="16" rx="2"/>
+              <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/>
+            </svg>
+          </div>
+          <div>
+            <div class="shortcuts-title">Keyboard Shortcuts</div>
+            <div class="shortcuts-subtitle">Speed up your workflow</div>
+          </div>
+        </div>
+        <button class="shortcuts-close" onclick="App.closeShortcuts()" aria-label="Close">&times;</button>
+      </div>
+      <div class="shortcuts-body">
+        <div class="shortcuts-group">
+          <div class="shortcuts-group-label">Navigation</div>
+          <div class="shortcut-row"><span class="shortcut-desc">New Invoice</span><span class="shortcut-keys"><kbd>G</kbd> then <kbd>N</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Saved Invoices</span><span class="shortcut-keys"><kbd>G</kbd> then <kbd>H</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Templates</span><span class="shortcut-keys"><kbd>G</kbd> then <kbd>T</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Settings</span><span class="shortcut-keys"><kbd>G</kbd> then <kbd>S</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Help &amp; Guide</span><span class="shortcut-keys"><kbd>G</kbd> then <kbd>?</kbd></span></div>
+        </div>
+        <div class="shortcuts-group">
+          <div class="shortcuts-group-label">Invoice</div>
+          <div class="shortcut-row"><span class="shortcut-desc">Save invoice</span><span class="shortcut-keys"><kbd>⌘</kbd><kbd>S</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Add line item</span><span class="shortcut-keys"><kbd>⌘</kbd><kbd>↵</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Clear / reset form</span><span class="shortcut-keys"><kbd>⌘</kbd><kbd>⌫</kbd></span></div>
+        </div>
+        <div class="shortcuts-group">
+          <div class="shortcuts-group-label">General</div>
+          <div class="shortcut-row"><span class="shortcut-desc">Toggle dark mode</span><span class="shortcut-keys"><kbd>⌘</kbd><kbd>⇧</kbd><kbd>D</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Show shortcuts</span><span class="shortcut-keys"><kbd>?</kbd></span></div>
+          <div class="shortcut-row"><span class="shortcut-desc">Close dialog</span><span class="shortcut-keys"><kbd>Esc</kbd></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- ═══════════════════════ AI EMAIL MODAL ═══════════════════════ -->
   <div class="modal-overlay" id="emailModal" onclick="App.closeEmailModal(event)">
