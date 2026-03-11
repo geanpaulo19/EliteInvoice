@@ -115,7 +115,7 @@ const App = (() => {
   /**
    * setEditMode(index)
    * Switches the invoice toolbar into "editing an existing invoice" mode.
-   * Hides "Save Invoice", shows "Update Invoice" + a "Cancel Edit" button.
+   * Hides "Save Invoice", shows "Update Invoice" + a "Done" button.
    * Passing null resets back to new-invoice mode.
    */
   function setEditMode(index) {
@@ -347,7 +347,7 @@ const App = (() => {
   function cancelEdit() {
     setEditMode(null);
     newInvoice(true);  // silent=true — we show our own toast below
-    showToast('Edit cancelled — form reset.');
+    showToast('Done editing — form reset.');
   }
 
   /* ══════════ AI MAGIC PARSE ══════════ */
@@ -1084,7 +1084,7 @@ const App = (() => {
       document.getElementById('invoiceBody').innerHTML = '';
       (inv.items || []).forEach(item => addRow(item.desc || '', item.qty ?? 1, item.price ?? ''));
 
-      // Enter edit mode — toolbar swaps to Update + Cancel Edit
+      // Enter edit mode — toolbar swaps to Update + Done
       setEditMode(idx);
 
       navigate('invoice');
@@ -1475,6 +1475,18 @@ const App = (() => {
 
 
   /* ══════════ SPLASH SCREEN ══════════ */
+  /* ══════════ KEYBOARD SHORTCUTS DIALOG ══════════ */
+  function openShortcuts() {
+    document.getElementById('shortcutsDialog').classList.add('visible');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeShortcuts(event) {
+    if (event && event.target !== document.getElementById('shortcutsDialog')) return;
+    document.getElementById('shortcutsDialog').classList.remove('visible');
+    document.body.style.overflow = '';
+  }
+
   function showSplashIfNew() {
     const seen = localStorage.getItem(KV_SEEN);
     if (seen) return; // returning user — skip
@@ -1499,7 +1511,8 @@ const App = (() => {
     toggleTheme,
     calculateTotalRevenue,
     selectTemplate, applyTemplate,
-    filterHistory, clearHistorySearch, setHistoryFilter
+    filterHistory, clearHistorySearch, setHistoryFilter,
+    openShortcuts, closeShortcuts
   };
 })();
 
@@ -1520,6 +1533,109 @@ const EliteSplash = {
 document.addEventListener('DOMContentLoaded', () => {
   App.init().catch(err => console.warn('EliteInvoice init error:', err));
 });
+
+/* ══════════════════════════════════════════════════
+   KEYBOARD SHORTCUTS
+══════════════════════════════════════════════════ */
+(function () {
+  // "G then X" navigation — buffer clears after 1s
+  let _gBuffer = false;
+  let _gTimer  = null;
+
+  document.addEventListener('keydown', (e) => {
+    // Ignore when typing in inputs, textareas, selects, contenteditable
+    const tag = document.activeElement?.tagName;
+    const inField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+      || document.activeElement?.isContentEditable;
+
+    const cmd  = e.metaKey || e.ctrlKey;
+    const key  = e.key;
+
+    // ── Esc — close any open dialog ──
+    if (key === 'Escape') {
+      const shortcuts = document.getElementById('shortcutsDialog');
+      if (shortcuts?.classList.contains('visible')) {
+        shortcuts.classList.remove('visible');
+        document.body.style.overflow = '';
+        return;
+      }
+      // Let existing Esc handlers (confirm, email modal) fall through
+      return;
+    }
+
+    // Shortcuts that work even inside fields
+    if (cmd) {
+      // ⌘S — save / update invoice
+      if (key === 's' || key === 'S') {
+        const invoiceView = document.getElementById('view-invoice');
+        if (invoiceView?.classList.contains('active')) {
+          e.preventDefault();
+          const updateBtn = document.getElementById('btnUpdateInvoice');
+          if (updateBtn && updateBtn.style.display !== 'none') {
+            App.updateInvoice();
+          } else {
+            App.saveInvoice();
+          }
+        }
+        return;
+      }
+
+      // ⌘↵ — add line item (invoice view only)
+      if (key === 'Enter') {
+        const invoiceView = document.getElementById('view-invoice');
+        if (invoiceView?.classList.contains('active')) {
+          e.preventDefault();
+          App.addRow();
+        }
+        return;
+      }
+
+      // ⌘⌫ — clear invoice form
+      if (key === 'Backspace' || key === 'Delete') {
+        const invoiceView = document.getElementById('view-invoice');
+        if (invoiceView?.classList.contains('active')) {
+          e.preventDefault();
+          App.clearInvoice();
+        }
+        return;
+      }
+
+      // ⌘⇧D — toggle dark mode
+      if ((key === 'd' || key === 'D') && e.shiftKey) {
+        e.preventDefault();
+        App.toggleTheme();
+        return;
+      }
+    }
+
+    // ── Shortcuts that should NOT fire when typing in a field ──
+    if (inField) return;
+
+    // ? — open shortcuts dialog
+    if (key === '?' || (key === '/' && e.shiftKey)) {
+      e.preventDefault();
+      App.openShortcuts();
+      return;
+    }
+
+    // G — start "go to" sequence
+    if (key === 'g' || key === 'G') {
+      _gBuffer = true;
+      clearTimeout(_gTimer);
+      _gTimer = setTimeout(() => { _gBuffer = false; }, 1000);
+      return;
+    }
+
+    // G then X — navigate
+    if (_gBuffer) {
+      _gBuffer = false;
+      clearTimeout(_gTimer);
+      const map = { n: 'invoice', h: 'history', t: 'templates', s: 'settings', '?': 'help', '/': 'help' };
+      const dest = map[key.toLowerCase()];
+      if (dest) { e.preventDefault(); App.navigate(dest); }
+    }
+  });
+}());
 
 /* ══════════════════════════════════════════════════
    SAFARI PRINT FIX
