@@ -3184,3 +3184,101 @@ kbd {
 }
 [data-theme="dark"] .help-shortcuts-grid { border-color: #3a3a3c; }
 [data-theme="dark"] .help-shortcuts-group + .help-shortcuts-group { border-top-color: #3a3a3c; }
+
+/* ══════════════════════════════════════════════════
+   DISCOUNT ROW
+══════════════════════════════════════════════════ */
+.discount-row {
+  /* hidden by default until a value is entered — the row still takes space
+     so the layout doesn't jump; opacity fade looks intentional */
+  opacity: 0.4;
+  transition: opacity 0.2s;
+}
+.discount-row--active {
+  opacity: 1;
+}
+.discount-label-group {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.discount-controls {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.discount-amount-input {
+  width: 64px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 12px;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+.discount-amount-input::-webkit-outer-spin-button,
+.discount-amount-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.discount-amount-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
+.discount-type-btn {
+  min-width: 28px;
+  height: 22px;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.discount-type-btn:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+/* The print label sits next to "Discount" text on print, hidden on screen */
+.discount-print-label {
+  display: none;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* ── Print overrides ── */
+@media print {
+  /* Hide the interactive controls, show the static label */
+  .discount-controls { display: none !important; }
+  .discount-print-label { display: inline !important; }
+
+  /* Always show the row on print (active state irrelevant) */
+  .discount-row { opacity: 1 !important; }
+
+  /* Hide the row entirely if there's no discount */
+  .discount-row:not(.discount-row--active) { display: none !important; }
+}
+
+[data-theme="dark"] .discount-amount-input {
+  background: #1c1c1e;
+  border-color: #3a3a3c;
+  color: var(--text-primary);
+}
+[data-theme="dark"] .discount-type-btn {
+  background: #1c1c1e;
+  border-color: #3a3a3c;
+  color: var(--text-secondary);
+}
+[data-theme="dark"] .discount-type-btn:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
