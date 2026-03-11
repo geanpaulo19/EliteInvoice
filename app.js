@@ -1589,7 +1589,8 @@ const App = (() => {
     calculateTotalRevenue,
     selectTemplate, applyTemplate,
     filterHistory, clearHistorySearch, setHistoryFilter,
-    openShortcuts, closeShortcuts
+    openShortcuts, closeShortcuts,
+    showToast
   };
 })();
 
@@ -1609,6 +1610,14 @@ const EliteSplash = {
 
 document.addEventListener('DOMContentLoaded', () => {
   App.init().catch(err => console.warn('EliteInvoice init error:', err));
+
+  // Handle PWA shortcut deep links e.g. /?view=history
+  const params = new URLSearchParams(window.location.search);
+  const view = params.get('view');
+  if (view) {
+    // Wait for init to complete before navigating
+    setTimeout(() => App.navigate(view), 100);
+  }
 });
 
 /* ══════════════════════════════════════════════════
@@ -1761,3 +1770,92 @@ function toggleFaq(btn) {
     btn.classList.add('open');
   }
 }
+
+/* ══════════════════════════════════════════════════
+   KONAMI CODE EASTER EGG
+   ↑ ↑ ↓ ↓ ← → ← → B A
+══════════════════════════════════════════════════ */
+(function () {
+  const KONAMI = [
+    'ArrowUp','ArrowUp',
+    'ArrowDown','ArrowDown',
+    'ArrowLeft','ArrowRight',
+    'ArrowLeft','ArrowRight',
+    'b','a'
+  ];
+  let _pos = 0;
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === KONAMI[_pos]) {
+      _pos++;
+      if (_pos === KONAMI.length) {
+        _pos = 0;
+        _launchConfetti();
+      }
+    } else {
+      _pos = e.key === KONAMI[0] ? 1 : 0;
+    }
+  });
+
+  const PARTICLES = ['$', '€', '£', '₱', '💸', '🧾', '✦', '$', '$', '€'];
+
+  function _launchConfetti() {
+    // Toast
+    const toastEl = document.getElementById('toast');
+    const prev = toastEl ? toastEl.textContent : '';
+    if (typeof App !== 'undefined') {
+      App.showToast
+        ? App.showToast('🎉 Cheat code unlocked. Unfortunately we can\'t discount your taxes.')
+        : _fallbackToast('🎉 Cheat code unlocked. Unfortunately we can\'t discount your taxes.');
+    }
+
+    // Inject styles once
+    if (!document.getElementById('_konami_styles')) {
+      const s = document.createElement('style');
+      s.id = '_konami_styles';
+      s.textContent = `
+        .konami-particle {
+          position: fixed;
+          top: -30px;
+          font-size: 18px;
+          pointer-events: none;
+          z-index: 99999;
+          user-select: none;
+          animation: konamifall var(--dur) var(--delay) cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+        }
+        @keyframes konamifall {
+          0%   { transform: translateY(0) rotate(0deg) scale(1);   opacity: 1; }
+          70%  { opacity: 1; }
+          100% { transform: translateY(110vh) rotate(var(--spin)) scale(0.6); opacity: 0; }
+        }
+      `;
+      document.head.appendChild(s);
+    }
+
+    // Spawn particles in waves
+    const count = 60;
+    for (let i = 0; i < count; i++) {
+      setTimeout(() => {
+        const el = document.createElement('div');
+        el.className = 'konami-particle';
+        el.textContent = PARTICLES[Math.floor(Math.random() * PARTICLES.length)];
+        const dur  = (1.8 + Math.random() * 1.4).toFixed(2) + 's';
+        const delay = (Math.random() * 0.6).toFixed(2) + 's';
+        const spin = (Math.random() * 720 - 360).toFixed(0) + 'deg';
+        const left = (Math.random() * 100).toFixed(1) + 'vw';
+        el.style.cssText = `left:${left}; --dur:${dur}; --delay:${delay}; --spin:${spin};`;
+        document.body.appendChild(el);
+        // Clean up after animation
+        setTimeout(() => el.remove(), 3200);
+      }, Math.random() * 400);
+    }
+  }
+
+  function _fallbackToast(msg) {
+    let t = document.getElementById('toast');
+    if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3200);
+  }
+}());
