@@ -60,8 +60,12 @@
 [data-theme="dark"] .btn-secondary:hover{background:#3a3a3c;color:#f5f5f7}
 [data-theme="dark"] .btn-ghost{color:#a1a1a6;border-color:#3a3a3c}
 [data-theme="dark"] .btn-ghost:hover{background:#2c2c2e;color:#f5f5f7}
-[data-theme="dark"] .magic-badge,[data-theme="dark"] .modal-ai-badge{background:linear-gradient(135deg,#0d2a4a 0%,#1a1040 100%);color:#4da3ff}
-[data-theme="dark"] .hc-overdue-badge.upcoming{background:#0d2e18;color:#4ade80}
+[data-theme="dark"] .magic-badge,[data-theme="dark"] .modal-ai-badge{
+  background: linear-gradient(110deg, #0d2a4a, #1a1040, #2d1050, #0d2a4a);
+  background-size: 250% 250%;
+  animation: aiGradientShift 4s ease infinite 0.5s;
+  color: #a78bfa;
+}[data-theme="dark"] .hc-overdue-badge.upcoming{background:#0d2e18;color:#4ade80}
 [data-theme="dark"] .hc-overdue-badge.gentle{background:#2e1f00;color:#fbbf24}
 [data-theme="dark"] .hc-overdue-badge.friendly{background:#2e1500;color:#fb923c}
 [data-theme="dark"] .hc-overdue-badge.firm{background:#2e0a0a;color:#f87171}
@@ -71,7 +75,7 @@
 [data-theme="dark"] .modal-tone-badge.firm{background:#2e0a0a;color:#f87171}
 [data-theme="dark"] .btn-del-invoice{background:#2e0a0a;color:#f87171;border-color:#3a1010}
 [data-theme="dark"] .btn-del-invoice:hover{background:#3d0f0f}
-[data-theme="dark"] .btn-draft-email{background:rgba(0,113,227,0.15);color:#4da3ff;border-color:rgba(0,113,227,0.3)}
+[data-theme="dark"] .btn-draft-email { box-shadow: 0 2px 10px rgba(94,92,230,0.2); }
 [data-theme="dark"] .btn-load{background:#1c2e1c;color:#4ade80;border-color:#1a3a1a}
 [data-theme="dark"] .btn-load:hover{background:#243824}
 [data-theme="dark"] .confirm-box{background:#2c2c2e}
@@ -291,7 +295,9 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .btn-ghost:hover { background: var(--bg); color: var(--text-primary); }
 
 .btn-ai {
-  background: linear-gradient(135deg, #0071e3 0%, #5e5ce6 100%);
+  background: linear-gradient(110deg, #0071e3, #5e5ce6, #a855f7, #0071e3);
+  background-size: 250% 250%;
+  animation: aiGradientShift 4s ease infinite;
   color: #fff;
   border: none;
   padding: 8px 18px;
@@ -301,13 +307,14 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   font-weight: 600;
   cursor: pointer;
   display: flex; align-items: center; gap: 6px;
-  transition: opacity 0.15s, transform 0.1s;
+  transition: opacity 0.15s, transform 0.1s, box-shadow 0.2s;
   flex-shrink: 0;
   white-space: nowrap;
+  box-shadow: 0 2px 12px rgba(94,92,230,0.35);
 }
-.btn-ai:hover    { opacity: 0.88; }
+.btn-ai:hover    { opacity: 0.92; box-shadow: 0 4px 20px rgba(94,92,230,0.5); }
 .btn-ai:active   { transform: scale(0.97); }
-.btn-ai:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-ai:disabled { opacity: 0.5; cursor: not-allowed; animation: none; }
 
 .btn-add-row {
   background: transparent;
@@ -388,21 +395,48 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 ══════════════════════════════════════════════════ */
 .magic-card {
   background: var(--surface);
-  border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
   padding: 20px 22px;
   margin-bottom: 20px;
   box-shadow: var(--shadow-sm);
   width: 100%; max-width: 100%;
+  position: relative;
+  /* Animated gradient border via outline trick */
+  border: 1.5px solid transparent;
+  background-clip: padding-box;
+  outline: 1.5px solid transparent;
 }
+/* Animated gradient border using ::before pseudo overlay */
+.magic-card::before {
+  content: '';
+  position: absolute;
+  inset: -1.5px;
+  border-radius: calc(var(--radius-lg) + 1px);
+  background: linear-gradient(110deg, #0071e3, #5e5ce6, #a855f7, #06b6d4, #0071e3);
+  background-size: 300% 300%;
+  animation: aiGradientShift 5s ease infinite;
+  z-index: 0;
+  opacity: 0.55;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1.5px;
+}
+.magic-card > * { position: relative; z-index: 1; }
+
 .magic-header {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
 }
 .magic-badge {
   display: flex; align-items: center; gap: 5px;
-  background: linear-gradient(135deg, #e8f1fc 0%, #ede8fc 100%);
-  color: var(--accent); font-size: 11.5px; font-weight: 700;
+  background: linear-gradient(110deg, #dbeafe, #ede9fe, #fce7f3, #dbeafe);
+  background-size: 250% 250%;
+  animation: aiGradientShift 4s ease infinite 0.5s;
+  color: #4f46e5;
+  font-size: 11.5px; font-weight: 700;
   letter-spacing: 0.3px; padding: 4px 10px; border-radius: 20px;
   text-transform: uppercase;
 }
@@ -754,13 +788,16 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .btn-load:hover { background: #d0e5fc; }
 
 .btn-draft-email {
-  background: linear-gradient(135deg, #0071e3 0%, #5e5ce6 100%);
+  background: linear-gradient(110deg, #0071e3, #5e5ce6, #a855f7, #0071e3);
+  background-size: 250% 250%;
+  animation: aiGradientShift 4s ease infinite 0.3s;
   color: #fff; border: none; padding: 6px 13px; border-radius: 20px;
   font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: var(--font);
   display: flex; align-items: center; gap: 5px;
-  transition: opacity 0.15s, transform 0.1s; white-space: nowrap;
+  transition: opacity 0.15s, transform 0.1s, box-shadow 0.2s; white-space: nowrap;
+  box-shadow: 0 2px 10px rgba(94,92,230,0.3);
 }
-.btn-draft-email:hover  { opacity: 0.88; }
+.btn-draft-email:hover  { opacity: 0.92; box-shadow: 0 3px 16px rgba(94,92,230,0.45); }
 .btn-draft-email:active { transform: scale(0.97); }
 
 .btn-del-invoice {
@@ -911,8 +948,10 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .modal-title-group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .modal-ai-badge {
   display: flex; align-items: center; gap: 5px;
-  background: linear-gradient(135deg, #e8f1fc 0%, #ede8fc 100%);
-  color: var(--accent); font-size: 11.5px; font-weight: 700;
+  background: linear-gradient(110deg, #dbeafe, #ede9fe, #fce7f3, #dbeafe);
+  background-size: 250% 250%;
+  animation: aiGradientShift 4s ease infinite 1s;
+  color: #4f46e5; font-size: 11.5px; font-weight: 700;
   letter-spacing: 0.3px; padding: 4px 10px; border-radius: 20px; text-transform: uppercase;
 }
 .modal-invoice-ref { font-size: 12.5px; font-weight: 600; color: var(--text-secondary); }
@@ -2750,11 +2789,17 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 }
 
 /* ── Button ripple-press ── */
-.btn-primary, .btn-secondary, .btn-ghost, .btn-ai,
-.btn-update, .btn-load, .btn-draft-email, .btn-danger {
+.btn-primary, .btn-secondary, .btn-ghost,
+.btn-update, .btn-load, .btn-danger {
   transition: background 0.15s, opacity 0.15s,
               transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1),
               box-shadow 0.15s;
+}
+/* AI buttons: don't transition background — it's handled by the keyframe animation */
+.btn-ai, .btn-draft-email {
+  transition: opacity 0.15s,
+              transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.2s;
 }
 .btn-primary:active, .btn-secondary:active, .btn-ghost:active,
 .btn-ai:active, .btn-update:active, .btn-load:active,
@@ -3281,4 +3326,63 @@ kbd {
   background: var(--accent-dim);
   border-color: var(--accent);
   color: var(--accent);
+}
+
+/* ══════════════════════════════════════════════════
+   AI GRADIENT SYSTEM — shared keyframe + all AI elements
+══════════════════════════════════════════════════ */
+@keyframes aiGradientShift {
+  0%   { background-position: 0%   50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0%   50%; }
+}
+
+/* Splash screen AI feature icon */
+.splash-feature-icon.ai {
+  background: linear-gradient(110deg,
+    rgba(94,92,230,0.3),
+    rgba(168,85,247,0.3),
+    rgba(6,182,212,0.25),
+    rgba(94,92,230,0.3));
+  background-size: 250% 250%;
+  animation: aiGradientShift 5s ease infinite 0.8s;
+  border-color: rgba(168,85,247,0.4);
+  color: #c4b5fd;
+}
+
+/* Help "✦ AI-Powered" tag */
+.help-about-tag.ai-tag {
+  background: linear-gradient(110deg, #dbeafe, #ede9fe, #fce7f3, #dbeafe) !important;
+  background-size: 250% 250% !important;
+  animation: aiGradientShift 4s ease infinite 1.2s;
+  border-color: transparent !important;
+  color: #4f46e5 !important;
+  font-weight: 600;
+}
+[data-theme="dark"] .help-about-tag.ai-tag {
+  background: linear-gradient(110deg, #0d2a4a, #1a1040, #2d1050, #0d2a4a) !important;
+  background-size: 250% 250% !important;
+  color: #a78bfa !important;
+  border-color: transparent !important;
+}
+
+
+
+/* Magic card dark mode ::before border */
+[data-theme="dark"] .magic-card::before {
+  opacity: 0.75;
+}
+
+/* Reduce motion — honour prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .btn-ai,
+  .btn-draft-email,
+  .magic-badge,
+  .magic-card::before,
+  .modal-ai-badge,
+  .splash-feature-icon.ai,
+  .help-about-tag.ai-tag {
+    animation: none;
+    background-size: 100% 100%;
+  }
 }
