@@ -63,7 +63,7 @@
 [data-theme="dark"] .magic-badge,[data-theme="dark"] .modal-ai-badge{
   background: linear-gradient(110deg, #0d2a4a, #1a1040, #2d1050, #0d2a4a);
   background-size: 250% 250%;
-  animation: aiGradientShift 4s ease infinite 0.5s;
+  animation: aiGradientShift 14s ease-in-out infinite 2s;
   color: #a78bfa;
 }[data-theme="dark"] .hc-overdue-badge.upcoming{background:#0d2e18;color:#4ade80}
 [data-theme="dark"] .hc-overdue-badge.gentle{background:#2e1f00;color:#fbbf24}
@@ -297,7 +297,7 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .btn-ai {
   background: linear-gradient(110deg, #0071e3, #5e5ce6, #a855f7, #0071e3);
   background-size: 250% 250%;
-  animation: aiGradientShift 4s ease infinite;
+  animation: aiGradientShift 14s ease-in-out infinite;
   color: #fff;
   border: none;
   padding: 8px 18px;
@@ -414,7 +414,7 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   border-radius: calc(var(--radius-lg) + 1px);
   background: linear-gradient(110deg, #0071e3, #5e5ce6, #a855f7, #06b6d4, #0071e3);
   background-size: 300% 300%;
-  animation: aiGradientShift 5s ease infinite;
+  animation: aiGradientShift 16s ease-in-out infinite;
   z-index: 0;
   opacity: 0.55;
   -webkit-mask:
@@ -434,7 +434,7 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   display: flex; align-items: center; gap: 5px;
   background: linear-gradient(110deg, #dbeafe, #ede9fe, #fce7f3, #dbeafe);
   background-size: 250% 250%;
-  animation: aiGradientShift 4s ease infinite 0.5s;
+  animation: aiGradientShift 14s ease-in-out infinite 2s;
   color: #4f46e5;
   font-size: 11.5px; font-weight: 700;
   letter-spacing: 0.3px; padding: 4px 10px; border-radius: 20px;
@@ -790,7 +790,7 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .btn-draft-email {
   background: linear-gradient(110deg, #0071e3, #5e5ce6, #a855f7, #0071e3);
   background-size: 250% 250%;
-  animation: aiGradientShift 4s ease infinite 0.3s;
+  animation: aiGradientShift 14s ease-in-out infinite 1s;
   color: #fff; border: none; padding: 6px 13px; border-radius: 20px;
   font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: var(--font);
   display: flex; align-items: center; gap: 5px;
@@ -950,7 +950,7 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   display: flex; align-items: center; gap: 5px;
   background: linear-gradient(110deg, #dbeafe, #ede9fe, #fce7f3, #dbeafe);
   background-size: 250% 250%;
-  animation: aiGradientShift 4s ease infinite 1s;
+  animation: aiGradientShift 16s ease-in-out infinite 3s;
   color: #4f46e5; font-size: 11.5px; font-weight: 700;
   letter-spacing: 0.3px; padding: 4px 10px; border-radius: 20px; text-transform: uppercase;
 }
@@ -3361,7 +3361,7 @@ kbd {
 ══════════════════════════════════════════════════ */
 @keyframes aiGradientShift {
   0%   { background-position: 0%   50%; }
-  50%  { background-position: 100% 50%; }
+  50%  { background-position: 80%  50%; }
   100% { background-position: 0%   50%; }
 }
 
@@ -3373,7 +3373,7 @@ kbd {
     rgba(6,182,212,0.25),
     rgba(94,92,230,0.3));
   background-size: 250% 250%;
-  animation: aiGradientShift 5s ease infinite 0.8s;
+  animation: aiGradientShift 18s ease-in-out infinite 2.5s;
   border-color: rgba(168,85,247,0.4);
   color: #c4b5fd;
 }
@@ -3382,7 +3382,7 @@ kbd {
 .help-about-tag.ai-tag {
   background: linear-gradient(110deg, #dbeafe, #ede9fe, #fce7f3, #dbeafe) !important;
   background-size: 250% 250% !important;
-  animation: aiGradientShift 4s ease infinite 1.2s;
+  animation: aiGradientShift 16s ease-in-out infinite 4s;
   border-color: transparent !important;
   color: #4f46e5 !important;
   font-weight: 600;
