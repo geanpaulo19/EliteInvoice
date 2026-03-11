@@ -1119,12 +1119,13 @@
           </div>
           <div class="help-about-body">
             <div class="help-about-title">EliteInvoice</div>
-            <p class="help-about-text">A free, privacy-first invoicing tool that runs entirely in your browser — no account, no server, no subscription. Create professional invoices in seconds, pick from 8 beautiful templates, auto-fill with AI, track your revenue across currencies, and export to PDF. Everything stays on your device.</p>
+            <p class="help-about-text">A free, privacy-first invoicing tool that runs entirely in your browser — no account, no server, no subscription. Create professional invoices in seconds, pick from 8 beautiful templates, auto-fill with AI, add discounts, draft payment emails, track revenue across currencies, and export to PDF. Install it as an app on your phone or desktop. Everything stays on your device.</p>
             <div class="help-about-tags">
               <span class="help-about-tag">🔒 100% Private</span>
               <span class="help-about-tag">⚡ Works Offline</span>
               <span class="help-about-tag ai-tag">✦ AI-Powered</span>
               <span class="help-about-tag">🆓 Free Forever</span>
+              <span class="help-about-tag">📲 Installable PWA</span>
             </div>
           </div>
         </div>
@@ -1155,6 +1156,17 @@
             </div>
           </div>
           <div class="help-quick-card">
+            <div class="help-quick-icon" style="background:#fff0f0;color:#cf222e;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+              </svg>
+            </div>
+            <div>
+              <div class="help-quick-title">Add Discount</div>
+              <div class="help-quick-desc">Apply % or fixed amount off the subtotal</div>
+            </div>
+          </div>
+          <div class="help-quick-card">
             <div class="help-quick-icon" style="background:#fff3e0;color:#e65100;">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20">
                 <polyline points="6 9 12 15 18 9" />
@@ -1176,6 +1188,18 @@
             <div>
               <div class="help-quick-title">Print / PDF</div>
               <div class="help-quick-desc">Print any invoice directly from the browser</div>
+            </div>
+          </div>
+          <div class="help-quick-card">
+            <div class="help-quick-icon" style="background:#e8f4ff;color:#0071e3;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
+                <path d="M8 12l2 2 4-4"/>
+              </svg>
+            </div>
+            <div>
+              <div class="help-quick-title">Install as App</div>
+              <div class="help-quick-desc">Add to home screen for a native app feel</div>
             </div>
           </div>
         </div>
@@ -1290,7 +1314,47 @@
               <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div class="faq-answer">
-              <p>On <strong>desktop</strong>, click the theme toggle button in the top-right of the <strong>Settings</strong> page. On <strong>mobile</strong>, tap the sun/moon circle in the top-right corner of the header. Your preference is saved and persists across sessions.</p>
+              <p>On <strong>desktop</strong>, click the theme toggle button in the top-right of the <strong>Settings</strong> page. On <strong>mobile</strong>, tap the sun/moon circle in the top-right corner of the header. Your preference is saved and persists across sessions. You can also use the keyboard shortcut <kbd>⌘⇧D</kbd> from anywhere.</p>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question" onclick="toggleFaq(this)">
+              <span>How do I add a discount to an invoice?</span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="faq-answer">
+              <p>In the <strong>New Invoice</strong> view, you'll find a <strong>Discount</strong> row just above the Tax field in the totals section. Enter a value and toggle between <strong>%</strong> (percentage off subtotal) or a fixed currency amount using the button next to the input. The discount is applied to the subtotal first, and tax is then calculated on the reduced amount. Discounts are saved with the invoice and shown on print.</p>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question" onclick="toggleFaq(this)">
+              <span>What keyboard shortcuts are available?</span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="faq-answer">
+              <p>Press <kbd>?</kbd> anywhere in the app to open the shortcuts dialog. Key shortcuts include <kbd>G</kbd> then <kbd>N/H/T/S/?</kbd> to navigate between views (just like GitHub), <kbd>⌘S</kbd> to save or update an invoice, <kbd>⌘↵</kbd> to add a line item, <kbd>⌘⌫</kbd> to clear the form, and <kbd>⌘⇧D</kbd> to toggle dark mode. On desktop, there's also a <strong>Shortcuts</strong> button at the bottom of the sidebar.</p>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question" onclick="toggleFaq(this)">
+              <span>Can I install EliteInvoice as an app on my phone?</span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="faq-answer">
+              <p>Yes — EliteInvoice is a <strong>Progressive Web App (PWA)</strong>. On <strong>iOS Safari</strong>, tap the Share button and choose <em>Add to Home Screen</em>. On <strong>Android Chrome</strong>, tap the three-dot menu and choose <em>Install app</em> or <em>Add to Home Screen</em>. On <strong>desktop Chrome or Edge</strong>, look for the install icon in the address bar. Once installed, it opens in its own window with no browser chrome, works fully offline, and has home screen shortcuts to jump straight to New Invoice or Saved Invoices.</p>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question" onclick="toggleFaq(this)">
+              <span>Is there an easter egg? 👀</span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="faq-answer">
+              <p>Maybe. Try the classic Konami code on your keyboard: <kbd>↑</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> <kbd>←</kbd> <kbd>→</kbd> <kbd>B</kbd> <kbd>A</kbd>. No guarantees on what happens.</p>
             </div>
           </div>
 
@@ -1313,11 +1377,23 @@
           </div>
           <div class="help-tip">
             <span class="help-tip-num">04</span>
-            <div><strong>Tab through fields</strong> — all form inputs support keyboard navigation for fast invoice entry without touching the mouse.</div>
+            <div><strong>Master the keyboard shortcuts</strong> — <kbd>G</kbd> + <kbd>N/H/T/S</kbd> for navigation, <kbd>⌘S</kbd> to save, <kbd>⌘↵</kbd> to add a row. Press <kbd>?</kbd> to see them all.</div>
           </div>
           <div class="help-tip">
             <span class="help-tip-num">05</span>
             <div><strong>Template colors carry over to mobile</strong> — the bottom navigation bar tints to match your active invoice template's accent color.</div>
+          </div>
+          <div class="help-tip">
+            <span class="help-tip-num">06</span>
+            <div><strong>Discounts stack correctly</strong> — the discount is always applied to the subtotal first, so tax is calculated on the reduced amount, not the original total.</div>
+          </div>
+          <div class="help-tip">
+            <span class="help-tip-num">07</span>
+            <div><strong>Use Email Drafter after saving</strong> — open a saved invoice, click <strong>Draft Email</strong>, and get a professional payment request email tailored to the invoice amount and due date.</div>
+          </div>
+          <div class="help-tip">
+            <span class="help-tip-num">08</span>
+            <div><strong>Install as a PWA</strong> — adding EliteInvoice to your home screen gives you offline access, a native app feel, and quick-launch shortcuts to New Invoice and Saved Invoices.</div>
           </div>
         </div>
 
@@ -1353,7 +1429,36 @@
           <div class="faq-item">
             <button class="faq-question" onclick="toggleFaq(this)">
               <span style="display:flex;align-items:center;gap:10px;">
-                <span class="version-badge version-latest">v1.4.0</span>
+                <span class="version-badge version-latest">v1.5.0</span>
+                <span>PWA, Easter Egg &amp; Polish</span>
+              </span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="faq-answer">
+              <div class="changelog-meta">March 2026</div>
+              <ul class="changelog-list">
+                <li class="cl-new">PWA support — installable on iOS, Android, and desktop with offline caching via service worker</li>
+                <li class="cl-new">App icons (192px &amp; 512px) matching the EliteInvoice brand</li>
+                <li class="cl-new">Home screen shortcuts: jump directly to New Invoice or Saved Invoices</li>
+                <li class="cl-new">PWA standalone mode detection — tab bar adjusts for iOS home indicator automatically</li>
+                <li class="cl-new">Custom 404 page styled as a voided invoice (INV-0404)</li>
+                <li class="cl-new">Konami code easter egg — ↑↑↓↓←→←→BA for a surprise</li>
+                <li class="cl-new">Discount line item — apply % or fixed amount off the subtotal, saved with invoice and shown on print</li>
+                <li class="cl-new">Keyboard shortcuts system — full shortcut set with <kbd>?</kbd> dialog and sidebar button</li>
+                <li class="cl-improved">AI gradient animations slowed down and made more subtle (14–18s cycles)</li>
+                <li class="cl-improved">Cancel Edit button renamed to "Done" with green styling</li>
+                <li class="cl-improved">Mobile bottom tab bar height refined to iOS 26 proportions</li>
+                <li class="cl-improved">Update available toast shown when a new version is cached by the service worker</li>
+                <li class="cl-fix">6 bug fixes: navigate null guard, getTone urgency levels, invoice counter sync, clearInvoice edit mode leak, null fields rendered as "null", stale email modal index</li>
+                <li class="cl-fix">HTTP 502 retry logic added to email drafter with auto-retry after 1.5s</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question" onclick="toggleFaq(this)">
+              <span style="display:flex;align-items:center;gap:10px;">
+                <span class="version-badge">v1.4.0</span>
                 <span>Mobile Navigation Overhaul</span>
               </span>
               <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
