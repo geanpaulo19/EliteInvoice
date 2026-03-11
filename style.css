@@ -2734,7 +2734,7 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 ══════════════════════════════════════════════════ */
 @media (display-mode: standalone) and (max-width: 767px) {
   .mobile-tab-bar {
-    bottom: calc(env(safe-area-inset-bottom) + 10px);
+    bottom: calc(env(safe-area-inset-bottom) + 16px);
   }
   .main-content {
     padding-bottom: calc(90px + env(safe-area-inset-bottom));
@@ -2744,7 +2744,7 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 
 @media (max-width: 767px) {
   body[data-pwa="true"] .mobile-tab-bar {
-    bottom: calc(env(safe-area-inset-bottom) + 10px);
+    bottom: calc(env(safe-area-inset-bottom) + 16px);
   }
   body[data-pwa="true"] .main-content {
     padding-bottom: calc(90px + env(safe-area-inset-bottom));
