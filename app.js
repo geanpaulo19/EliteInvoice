@@ -1342,6 +1342,26 @@ const App = (() => {
     if (dot) dot.className = 'status-dot ' + state;
     const txt = document.getElementById('statusText');
     if (txt) txt.textContent = text;
+
+    // Grey out network-dependent AI buttons when offline
+    const isOffline = state === 'offline';
+    _setNetworkButtonsDisabled(isOffline);
+  }
+
+  function _setNetworkButtonsDisabled(disabled) {
+    // Static AI Magic button
+    const magicBtn = document.getElementById('magicBtn');
+    if (magicBtn) {
+      magicBtn.disabled = disabled;
+      magicBtn.title = disabled ? 'No internet connection' : '';
+    }
+    // Draft Email buttons are dynamically rendered — use a data attribute
+    // on the body so CSS handles current + future buttons
+    if (disabled) {
+      document.body.setAttribute('data-offline', 'true');
+    } else {
+      document.body.removeAttribute('data-offline');
+    }
   }
 
   /* ══════════ SIDEBAR CLOCK ══════════ */
@@ -1700,6 +1720,70 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.matches) document.body.setAttribute('data-pwa', 'true');
     else document.body.removeAttribute('data-pwa');
   });
+
+
+  // ── Network status detection ──
+  // navigator.onLine is unreliable on many devices — we use an active
+  // ping to a known-fast URL to verify real connectivity, with
+  // window online/offline events as a fast-path trigger.
+
+  const NetStatus = {
+    _isOffline: false,
+    _pingUrl: 'https://www.gstatic.com/generate_204', // Google's 204 endpoint, 0-byte response
+    _pollInterval: null,
+
+    async probe() {
+      try {
+        await fetch(this._pingUrl, {
+          method: 'HEAD',
+          mode: 'no-cors',
+          cache: 'no-store',
+          signal: AbortSignal.timeout(4000)
+        });
+        this._setOnline();
+      } catch (_) {
+        this._setOffline();
+      }
+    },
+
+    _setOffline() {
+      if (this._isOffline) return; // already offline, no flicker
+      this._isOffline = true;
+      document.body.setAttribute('data-offline', 'true');
+      const magicBtn = document.getElementById('magicBtn');
+      if (magicBtn) { magicBtn.disabled = true; magicBtn.title = 'No internet connection'; }
+      const dot = document.getElementById('statusDot');
+      if (dot) dot.className = 'status-dot offline';
+      const txt = document.getElementById('statusText');
+      if (txt) txt.textContent = 'Offline';
+      App.showToast('📡 No internet — AI features unavailable offline.');
+    },
+
+    _setOnline() {
+      if (!this._isOffline) return; // already online, skip
+      this._isOffline = false;
+      document.body.removeAttribute('data-offline');
+      const magicBtn = document.getElementById('magicBtn');
+      if (magicBtn) { magicBtn.disabled = false; magicBtn.title = ''; }
+      const dot = document.getElementById('statusDot');
+      if (dot) dot.className = 'status-dot online';
+      const txt = document.getElementById('statusText');
+      if (txt) txt.textContent = 'Ready';
+      App.showToast('✦ Back online — AI features restored.');
+    },
+
+    start() {
+      // Probe immediately on load
+      this.probe();
+      // Then poll every 10s to catch silent drops
+      this._pollInterval = setInterval(() => this.probe(), 10000);
+      // Use browser events as a fast-path trigger for an immediate re-probe
+      window.addEventListener('offline', () => this.probe());
+      window.addEventListener('online',  () => this.probe());
+    }
+  };
+
+  NetStatus.start();
 });
 
 /* ══════════════════════════════════════════════════
