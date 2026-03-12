@@ -2736,7 +2736,13 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 @media (display-mode: standalone) and (max-width: 767px) {
   .mobile-tab-bar {
     bottom: calc(env(safe-area-inset-bottom) + 24px);
+    padding: 8px 6px 9px;
+    border-radius: 32px;
   }
+  .tab-item { padding: 5px 4px 4px; }
+  .tab-icon  { width: 46px; height: 30px; border-radius: 15px; }
+  .tab-item svg { width: 23px; height: 23px; }
+  .tab-label { font-size: 10.5px; }
   .main-content {
     padding-bottom: calc(110px + env(safe-area-inset-bottom));
   }
@@ -2746,13 +2752,66 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 @media (max-width: 767px) {
   body[data-pwa="true"] .mobile-tab-bar {
     bottom: calc(env(safe-area-inset-bottom) + 24px);
+    padding: 8px 6px 9px;
+    border-radius: 32px;
   }
+  body[data-pwa="true"] .tab-item { padding: 5px 4px 4px; }
+  body[data-pwa="true"] .tab-icon  { width: 46px; height: 30px; border-radius: 15px; }
+  body[data-pwa="true"] .tab-item svg { width: 23px; height: 23px; }
+  body[data-pwa="true"] .tab-label { font-size: 10.5px; }
   body[data-pwa="true"] .main-content {
     padding-bottom: calc(110px + env(safe-area-inset-bottom));
   }
 }
 body[data-pwa="true"] .pwa-hidden { display: none !important; }
 body[data-pwa="true"] .pwa-only   { display: revert !important; }
+
+/* ── Offline state — grey out network-dependent AI buttons ── */
+body[data-offline="true"] #magicBtn,
+body[data-offline="true"] .btn-draft-email {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+  animation: none;
+  background: var(--border) !important;
+  color: var(--text-secondary, #6e6e73) !important;
+  box-shadow: none !important;
+}
+
+/* ── Mobile offline banner ── */
+.mobile-offline-banner {
+  display: none; /* hidden on desktop — status dot handles it */
+}
+@media (max-width: 767px) {
+  .mobile-offline-banner {
+    display: none; /* default hidden */
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 500;
+    background: #cf222e;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 7px 16px;
+    padding-top: max(7px, env(safe-area-inset-top));
+    text-align: center;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    letter-spacing: 0.1px;
+    animation: offlineBannerIn 0.3s cubic-bezier(0.22,1,0.36,1) both;
+  }
+  body[data-offline="true"] .mobile-offline-banner {
+    display: flex;
+  }
+}
+@keyframes offlineBannerIn {
+  from { transform: translateY(-100%); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
+[data-theme="dark"] .mobile-offline-banner {
+  background: #b91c1c;
+}
 
 /* ══════════════════════════════════════════════════
    PWA INSTALL NUDGE DIALOG
